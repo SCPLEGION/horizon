@@ -3622,6 +3622,11 @@ impl Game<'_> {
                     self.titles.reset_times();
                 }
             }
+            C::CustomPayload(p)
+                if p.channel == horizon_client::lan::chunks::MOD_BLOCK_ENTITY_CHANNEL =>
+            {
+                self.remote_mod_block_entity(&p.data)
+            }
             C::CustomPayload(p) => self.native_client_payload(&p.channel, &p.data),
             _ => {}
         }

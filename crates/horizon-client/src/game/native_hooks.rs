@@ -6,6 +6,12 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 23 adds block-entity client sync: a mod block entity's `client`
+//! compound reaches the clients with its chunk and when the mod calls
+//! `native_sync_block_entity`; a client reads it with
+//! `native_client_block_entity` and hears it in
+//! `native_client_block_entity_changed`.
+//!
 //! API 22 adds mod networking: packets on a mod's own channel from the
 //! server to a player's client (`native_send_to_player`, heard by
 //! `native_client_payload`) and back (`native_send_to_server`,
@@ -116,7 +122,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 22;
+pub(crate) const NATIVE_HOOKS_API: u32 = 23;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -765,6 +771,19 @@ impl Game<'_> {
     pub(super) fn native_server_payload(&mut self, player: u128, channel: &str, data: &[u8]) {
         let _ = (player, channel, data);
     }
+    /// A mod block entity's client view reached this client: `client` is
+    /// the `client` compound of the block entity `id` at `pos` on the
+    /// server, sent with its chunk, after its block changed, or when the
+    /// mod called `native_sync_block_entity`. Not called on the server's own
+    /// `Game`. API 23.
+    pub(super) fn native_client_block_entity_changed(
+        &mut self,
+        pos: [i32; 3],
+        id: &str,
+        client: &horizon_world::nbt::Compound,
+    ) {
+        let _ = (pos, id, client);
+    }
 }
 
 /// Helpers for native mods, kept as stable as the hook points.
@@ -867,6 +886,41 @@ impl Game<'_> {
             },
         ));
         true
+    }
+    /// Sends the `client` compound of the mod block entity at `pos` to the
+    /// players who have its chunk, at the end of this tick: what a machine
+    /// shows in the world (lit, a tank's fill). Call it after changing that
+    /// compound, in the block entity's tick too. Keep it small and change it
+    /// only when what players see changes: it travels to every player near
+    /// the block. Clients get it with the chunk anyway. API 23.
+    pub(super) fn native_sync_block_entity(&mut self, pos: [i32; 3]) {
+        if self.world.block_log.is_some() {
+            self.world
+                .mod_block_entity_log
+                .push((pos[0], pos[1], pos[2]));
+        }
+    }
+    /// The id and client view (`client` compound) of the mod block entity at
+    /// `pos`, as this client last heard it from the server; on the server's
+    /// own `Game` (a LAN host), the block entity's own. API 23.
+    pub(super) fn native_client_block_entity(
+        &self,
+        pos: [i32; 3],
+    ) -> Option<(&str, &horizon_world::nbt::Compound)> {
+        let Some(BlockEntity::Mod(m)) = self.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+        else {
+            return None;
+        };
+        if m.id.is_empty() {
+            return None;
+        }
+        if self.remote.is_some() {
+            return Some((&m.id, &m.nbt));
+        }
+        match m.nbt.get(&"client".into()) {
+            Some(horizon_world::nbt::Tag::Compound(client)) => Some((&m.id, client)),
+            _ => None,
+        }
     }
     /// Whether the player left mod `mod_id` on in Options > Mods. A mod
     /// turned off does nothing (check this first in each hook) until the
@@ -1191,6 +1245,33 @@ impl Game<'_> {
 
 /// Where the game calls the hook points.
 impl Game<'_> {
+    /// A mod block entity's client view from the server
+    /// (`chunks::mod_block_entity_packet`): kept as the client's block
+    /// entity there, which the block's next change drops.
+    pub(super) fn remote_mod_block_entity(&mut self, data: &[u8]) {
+        let Some((pos, id, client)) = horizon_client::lan::chunks::read_mod_block_entity(data)
+        else {
+            return;
+        };
+        let key = (pos[0], pos[1], pos[2]);
+        match self.world.block_entities.get_mut(&key) {
+            Some(BlockEntity::Mod(m)) => {
+                m.id.clone_from(&id);
+                m.nbt.clone_from(&client);
+            }
+            _ => {
+                self.world.block_entities.insert(
+                    key,
+                    BlockEntity::Mod(Box::new(ModBlockEntity {
+                        id: id.clone(),
+                        nbt: client.clone(),
+                        ..ModBlockEntity::default()
+                    })),
+                );
+            }
+        }
+        self.native_client_block_entity_changed(pos, &id, &client);
+    }
     /// `EntityBlock.newBlockEntity` of block `name`: Horizon's own, else a
     /// native mod's.
     pub(super) fn new_block_entity(&mut self, name: &str) -> Option<BlockEntity> {
