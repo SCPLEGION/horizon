@@ -232,7 +232,11 @@ Each box is `[min_x, min_y, min_z, max_x, max_y, max_z]` in block units.
 Each value of the template property needs an entry. Up to 16 boxes form a union;
 an empty list is an empty shape. Invalid bounds or values reject the content root.
 Without `shapes`, both shapes remain the template's. Other properties such as
-occlusion, light, and support still come from the template.
+occlusion, light, and support still come from the template, except that
+`"properties": {"occludes": false}` makes the block see-through as vanilla's
+`noOcclusion` does: it hides no neighbour face, has no occlusion shape, and lets
+light and sky light pass. A pipe on a full-cube template with smaller `shapes`
+needs it.
 
 A declaration may also set `"default_state": {"facing": "north"}`. The map
 changes only those state properties on the template's default; omitted properties keep

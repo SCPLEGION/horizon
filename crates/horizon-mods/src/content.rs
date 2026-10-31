@@ -73,6 +73,10 @@ pub struct BlockProperties {
     pub map_color: Option<u8>,
     /// A vanilla block whose sounds this block uses.
     pub sounds: Option<String>,
+    /// `false`: the block hides nothing behind it and lets light through
+    /// (`noOcclusion`), whatever its template does. A pipe on a full-cube
+    /// template with smaller `shapes` needs it.
+    pub occludes: Option<bool>,
 }
 
 /// Per-state outline and collision boxes, selected by one state property.
@@ -492,7 +496,8 @@ side = "both"
 capabilities = ["registries"]
 "#;
     const BLOCK: &[u8] = br#"{"template": "minecraft:iron_block",
-        "properties": {"hardness": 4.0, "light": 3, "sounds": "minecraft:amethyst_block"}}"#;
+        "properties": {"hardness": 4.0, "light": 3, "sounds": "minecraft:amethyst_block",
+                       "occludes": false}}"#;
     const ITEM: &[u8] = br#"{"template": "minecraft:diamond", "rarity": "uncommon"}"#;
 
     fn scratch(name: &str) -> PathBuf {
@@ -535,6 +540,7 @@ capabilities = ["registries"]
                     hardness: Some(4.0),
                     light: Some(3),
                     sounds: Some("minecraft:amethyst_block".into()),
+                    occludes: Some(false),
                     ..BlockProperties::default()
                 },
                 item: true,
