@@ -6,6 +6,10 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 24 adds `native_extract_item`, taking items out of a container
+//! through a face as a hopper would: with `native_insert_item`, a mod's
+//! item pipe.
+//!
 //! API 23 adds block-entity client sync: a mod block entity's `client`
 //! compound reaches the clients with its chunk and when the mod calls
 //! `native_sync_block_entity`; a client reads it with
@@ -122,7 +126,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 23;
+pub(crate) const NATIVE_HOOKS_API: u32 = 24;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1092,6 +1096,18 @@ impl Game<'_> {
         stack: ItemStack,
     ) -> Option<ItemStack> {
         self.insert_into_container((pos[0], pos[1], pos[2]), stack, face)
+    }
+    /// Takes up to `max` items of one stack out of the container at `pos`
+    /// (a chest, a furnace's output, a mod container's outputs) through its
+    /// side `face`, as a hopper there would: a mod's item pipe. `None` when
+    /// nothing can be taken. API 24.
+    pub(super) fn native_extract_item(
+        &mut self,
+        pos: [i32; 3],
+        face: Direction,
+        max: u32,
+    ) -> Option<ItemStack> {
+        self.extract_from_container((pos[0], pos[1], pos[2]), face, max)
     }
     /// Where the mouse is, in GUI pixels. API 20.
     pub(super) fn native_cursor(&self) -> [f32; 2] {
