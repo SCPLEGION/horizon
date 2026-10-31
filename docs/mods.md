@@ -147,6 +147,12 @@ itself. A name nobody defines is skipped.
 A pool addition holds `"elements"` as a pool does. `horizon-port-pack carry` writes these from the Lithostitched
 modifiers `add_structure_set_entries` and `add_template_pool_elements`.
 
+A mod adds its own placed features to biomes with NeoForge's biome modifier files, as carried NeoForge mods
+ship them: `data/<ns>/neoforge/biome_modifier/*.json` of type `neoforge:add_features`, naming the biomes (an
+id, a `#tag`, or a list) and the generation `step`. The features join each biome's list for that step, after
+vanilla's; tags resolve with the mods' biome tag additions. Other modifier types are skipped with a warning
+in the log. Configured features may sit in `worldgen/feature/` (26.3's folder) or `worldgen/configured_feature/`.
+
 A structure (and any of its pool elements, in place of the structure's) may hold
 `horizon:enhanced_terrain_adaptation`: MoogsStructureLib's terrain kernel, which carves or buries terrain around the
 pieces on top of vanilla's `terrain_adaptation`. `kernel_size` and `kernel_distance` shape the kernel; `top` and
