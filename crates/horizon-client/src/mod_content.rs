@@ -977,15 +977,20 @@ pub const MAX_STATES: u32 = 1 << 20;
 const TAG_BUNDLES: [&str; 2] = ["block-tags.json", "worldgen/block_tags.json"];
 /// The worldgen loader's bundle of biome tags.
 const BIOME_TAGS: &str = "worldgen/biome_tags.json";
+/// The worldgen loader's bundle of biomes (id → the biome file's text).
+const BIOMES: &str = "worldgen/biomes.json";
 /// Worldgen registries a content mod may add to, and the bundle the
 /// worldgen loader reads each from (id → the file's text): what structure
 /// mods hold. Biomes, noise and density functions change the terrain and
 /// are not read from mods.
-const WORLDGEN_BUNDLES: [(&str, &str); 6] = [
+/// Configured features are `worldgen/feature/` in 26.3's data packs, and
+/// `worldgen/configured_feature/` in packs made before the rename.
+const WORLDGEN_BUNDLES: [(&str, &str); 7] = [
     ("structure", "worldgen/structures.json"),
     ("structure_set", "worldgen/structure_sets.json"),
     ("template_pool", "worldgen/template_pools.json"),
     ("processor_list", "worldgen/processor_lists.json"),
+    ("feature", "worldgen/features.json"),
     ("configured_feature", "worldgen/features.json"),
     ("placed_feature", "worldgen/placed_features.json"),
 ];
@@ -1411,6 +1416,7 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
     let mut warnings = Vec::new();
     let mut worldgen: BTreeMap<&str, Vec<(String, String)>> = BTreeMap::new();
     let mut additions: BTreeMap<&str, Vec<Addition>> = BTreeMap::new();
+    let mut biome_modifiers: Vec<(String, String)> = Vec::new();
     for m in mods {
         let declarations = format!("data/{}/horizon/", m.id);
         let mut reader = m.content.reader()?;
@@ -1429,7 +1435,10 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
                 warnings.extend(merge.add(&m.id, file, replace, shared, values));
             } else if !file.starts_with(&declarations) {
                 overlay.write(file, &bytes)?;
-                if let Some((bundle, id)) = worldgen_entry(file) {
+                if biome_modifiers::is_modifier(file) {
+                    let text = String::from_utf8(bytes).map_err(|e| format!("{file}: {e}"))?;
+                    biome_modifiers.push((format!("{}: {file}", m.id), text));
+                } else if let Some((bundle, id)) = worldgen_entry(file) {
                     let text = String::from_utf8(bytes).map_err(|e| format!("{file}: {e}"))?;
                     let entries = worldgen.entry(bundle).or_default();
                     match Addition::read(bundle, &text).map_err(|e| format!("{file}: {e}"))? {
@@ -1500,6 +1509,7 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
             Some((format!("{ns}:{}", path.strip_suffix(".json")?), merge))
         })
         .collect();
+    let mut biome_tag_doc = None;
     if !biome_tags.is_empty() && base.join(BIOME_TAGS).exists() {
         let mut doc = read_json(&base.join(BIOME_TAGS))?;
         for (id, merge) in biome_tags {
@@ -1511,6 +1521,18 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
             doc.set(&id, J::Str(merged));
         }
         overlay.write(BIOME_TAGS, &serde_json::to_vec(&doc)?)?;
+        biome_tag_doc = Some(doc);
+    }
+    // NeoForge biome modifiers: features added to biomes, by the merged tags.
+    if !biome_modifiers.is_empty() && base.join(BIOMES).exists() {
+        let tags = match biome_tag_doc {
+            Some(doc) => doc,
+            None if base.join(BIOME_TAGS).exists() => read_json(&base.join(BIOME_TAGS))?,
+            None => J::Obj(Vec::new()),
+        };
+        let mut doc = read_json(&base.join(BIOMES))?;
+        warnings.extend(biome_modifiers::apply(&mut doc, &tags, &biome_modifiers)?);
+        overlay.write(BIOMES, &serde_json::to_vec(&doc)?)?;
     }
     // Structures and the pools, sets, processors and features they use, then
     // what mods add to sets and pools, in mod and file order.
@@ -1661,6 +1683,8 @@ fn stamp(base: &Path, mods: &[ContentMod]) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+#[path = "mod_content_biome_modifiers.rs"]
+mod biome_modifiers;
 #[cfg(test)]
 #[path = "mod_content_tests.rs"]
 mod tests;
