@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 26 runs `native_server_payload` as the sending player, their state
+//! swapped in (a worn item's fuel spent on the client's word).
+//!
 //! API 25 adds `native_destroy_speed`, the held item's mining speed on a
 //! block (a mod's powered tool).
 //!
@@ -129,7 +132,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 25;
+pub(crate) const NATIVE_HOOKS_API: u32 = 26;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -789,7 +792,10 @@ impl Game<'_> {
     /// A mod's packet from player `player` (UUID) reached the server:
     /// `channel` is the mod's own, `data` what that player's client sent with
     /// `native_send_to_server`, at most `NATIVE_PAYLOAD_TO_SERVER` bytes.
-    /// Server-side; trust nothing in it. API 22.
+    /// Server-side; trust nothing in it. API 22. Since API 26 the player's
+    /// state is swapped in, as for `native_right_click_block`: the hook can
+    /// read and change their inventory and armor, and `native_acting_player`
+    /// names them.
     pub(super) fn native_server_payload(&mut self, player: u128, channel: &str, data: &[u8]) {
         let _ = (player, channel, data);
     }
