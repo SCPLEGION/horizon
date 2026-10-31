@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 25 adds `native_destroy_speed`, the held item's mining speed on a
+//! block (a mod's powered tool).
+//!
 //! API 24 adds `native_extract_item`, taking items out of a container
 //! through a face as a hopper would: with `native_insert_item`, a mod's
 //! item pipe.
@@ -126,7 +129,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 24;
+pub(crate) const NATIVE_HOOKS_API: u32 = 25;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -695,6 +698,21 @@ impl Game<'_> {
     /// hides. API 12.
     pub(super) fn native_tooltip(&self, stack: &ItemStack, lines: &mut Vec<(Text, u32)>) {
         let _ = (stack, lines);
+    }
+    /// The speed `stack` (the acting player's main hand, `None` when empty)
+    /// mines the block `block` of hardness `hardness` at, before enchantments
+    /// and effects: `Item.getDestroySpeed`, as `speed` holds it from the
+    /// item's tool rules. A mod's tool sets its own (a powered drill that is
+    /// fast while charged). Both sides: the client predicts the crack, the
+    /// server times the break. API 25.
+    pub(super) fn native_destroy_speed(
+        &self,
+        stack: Option<&ItemStack>,
+        block: &str,
+        hardness: f32,
+        speed: &mut f32,
+    ) {
+        let _ = (stack, block, hardness, speed);
     }
     /// A player uses `stack` (right click) with `self.hand` on the block at
     /// `pos`, `face` the face clicked (`[0, 1, 0]` is the top), once the

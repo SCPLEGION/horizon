@@ -126,6 +126,11 @@ one stack out of the container at `pos` through its side `face`, from the slots 
 would use (a furnace gives its output and empty buckets, a mod container its outputs). Item pipes use the pair.
 Bundles that use it need `"hooks": 24`.
 
+API 25 adds `native_destroy_speed(stack, block, hardness, speed)`: the speed the held stack mines a block at, where
+`Item.getDestroySpeed` gives it, before enchantments and effects change it. A mod's tool sets `speed` (a powered drill
+mines fast while it holds energy and slowly once empty). It runs on the client, which draws the crack, and on the
+server, which times the break, so both must answer the same. Bundles that use it need `"hooks": 25`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
