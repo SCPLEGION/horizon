@@ -121,6 +121,11 @@ at the end of the tick). A client reads it with `native_client_block_entity(pos)
 hears each one in `native_client_block_entity_changed(pos, id, client)`. On a LAN host's own game the helper reads the
 block entity itself. Keep the view small and change it only when what players see changes.
 
+API 24 adds `native_extract_item(pos, face, max)`, the other half of `native_insert_item`: it takes up to `max` items of
+one stack out of the container at `pos` through its side `face`, from the slots and under the rules a hopper there
+would use (a furnace gives its output and empty buckets, a mod container its outputs). Item pipes use the pair.
+Bundles that use it need `"hooks": 24`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
