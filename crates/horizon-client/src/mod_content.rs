@@ -693,6 +693,14 @@ impl<'a> Plan<'a> {
         if let Some(s) = &p.sounds {
             row.set("sound", self.sounds[s].clone());
         }
+        if p.occludes == Some(false) {
+            // BlockBehaviour.Properties.noOcclusion: neighbours' faces show, light and sky light pass.
+            row.set("solid_render", J::Bool(false));
+            row.set("can_occlude", J::Bool(false));
+            row.set("shape_occlusion", J::Bool(false));
+            row.set("skylight_down", J::Bool(true));
+            row.set("dampening", J::Num(0.into()));
+        }
     }
 
     /// Adds each new block's copy of the template's entry to a map by name.
@@ -887,6 +895,37 @@ impl<'a> Plan<'a> {
         };
         for (state, id) in indices {
             mapping[state] = id;
+        }
+        Ok(())
+    }
+
+    /// `occlusion.nbt`: a block declared `"occludes": false` has an empty
+    /// occlusion shape in every state, so it culls no neighbour face.
+    fn occlusion_shapes(&self, tag: &mut Tag) -> Result<()> {
+        let see_through: Vec<&NewBlock> = self
+            .blocks
+            .iter()
+            .filter(|b| b.decl.properties.occludes == Some(false))
+            .collect();
+        if see_through.is_empty() {
+            return Ok(());
+        }
+        let Tag::Compound(root) = tag else {
+            return Err("occlusion table is not a compound".into());
+        };
+        let Some(Tag::List(entries)) = root.get_mut(&JavaString::from("shapes")) else {
+            return Err("occlusion table has no shapes".into());
+        };
+        let empty = entries.len() as i32;
+        entries.push(encode_shape(&VoxelShape::empty()));
+        let Some(Tag::IntArray(mapping)) = root.get_mut(&JavaString::from("cached_shapes")) else {
+            return Err("occlusion table has no mapping".into());
+        };
+        for b in see_through {
+            let first = b.rename.first as usize;
+            for state in first..first + b.rename.states.len() {
+                mapping[state] = empty;
+            }
         }
         Ok(())
     }
@@ -1362,6 +1401,9 @@ fn tables(base: &Path, plan: &Plan, overlay: &Overlay<'_>) -> Result<()> {
             plan.nbt(&mut named.tag);
             if name == "cached-collision.nbt" || name == "worldgen/blocks/cached-collision.nbt" {
                 plan.collision_shapes(&mut named.tag)?;
+            }
+            if name == "occlusion.nbt" {
+                plan.occlusion_shapes(&mut named.tag)?;
             }
             nbt::write_named(&named, Limits::tables()).map_err(|e| format!("{name}: {e}"))?
         };
