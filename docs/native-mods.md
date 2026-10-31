@@ -114,6 +114,13 @@ data)` (up to 32,767 bytes), heard by `native_server_payload(player, channel, da
 payload packets, so a client without the mod ignores them. The window's own client in single player gets them too. A
 server mod never trusts what a client sends. Bundles that use them need `"hooks": 22`.
 
+API 23 adds block-entity client sync. A mod block entity's client view is the `client` compound in its NBT: what a
+machine shows in the world, never its whole state. The server sends it to each player with the chunk, again after the
+block changes, and when the mod calls `native_sync_block_entity(pos)` after changing it (in the tick too; it goes out
+at the end of the tick). A client reads it with `native_client_block_entity(pos)`, which gives the id and the view, and
+hears each one in `native_client_block_entity_changed(pos, id, client)`. On a LAN host's own game the helper reads the
+block entity itself. Keep the view small and change it only when what players see changes.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

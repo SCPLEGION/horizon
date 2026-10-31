@@ -13,7 +13,7 @@ use horizon_protocol::{
     chunk::{
         BIOMES, BLOCKS, BlockEntityInfo, ChunkData, Heightmaps, LightData, Paletted, Strategy,
     },
-    packets::play::{ChunkBiomeData, LevelChunkWithLight},
+    packets::play::{self, ChunkBiomeData, LevelChunkWithLight},
     registry::{Builtin, ceil_log2},
 };
 use horizon_world::nbt::Tag;
@@ -995,6 +995,73 @@ fn java_hash_order<T>(items: &mut Vec<T>, pos: impl Fn(&T) -> (i32, i32, i32)) {
     items.extend(iteration.into_iter().filter_map(|i| slots[i].take()));
 }
 
+/// The custom payload channel of mod block entities' client views. A mod
+/// cannot send on `horizon:` channels (`native_send_to_player`), so this one
+/// is Horizon's own.
+pub const MOD_BLOCK_ENTITY_CHANNEL: &str = "horizon:mod_block_entity";
+
+/// The packet that gives clients a mod block entity's client view: the
+/// `client` compound a mod keeps in its block entity's NBT (native hooks API
+/// 23), with its position and id. None for other block entities, one with no
+/// `client` compound, and one a mod has taken out for a call.
+pub fn mod_block_entity_packet(
+    pos: (i32, i32, i32),
+    entity: &BlockEntity,
+) -> Option<play::Clientbound> {
+    let BlockEntity::Mod(m) = entity else {
+        return None;
+    };
+    let Some(Tag::Compound(client)) = m.nbt.get(&"client".into()) else {
+        return None;
+    };
+    if m.id.is_empty() {
+        return None;
+    }
+    let mut w = horizon_protocol::buf::Writer::new();
+    horizon_protocol::buf::Pos::write(&[pos.0, pos.1, pos.2], &mut w);
+    horizon_protocol::buf::Str::write(&m.id, &mut w);
+    horizon_protocol::buf::Nbt::write(&Tag::Compound(client.clone()), &mut w);
+    Some(play::Clientbound::CustomPayload(
+        horizon_protocol::packets::configuration::CustomPayload {
+            channel: MOD_BLOCK_ENTITY_CHANNEL.into(),
+            data: w.data,
+        },
+    ))
+}
+
+/// What [`mod_block_entity_packet`] sent: the position, the block entity's
+/// id and its client view.
+pub fn read_mod_block_entity(
+    data: &[u8],
+) -> Option<([i32; 3], String, horizon_world::nbt::Compound)> {
+    let mut r = horizon_protocol::buf::Reader::new(data);
+    let pos = horizon_protocol::buf::Pos::read(&mut r).ok()?;
+    let id = horizon_protocol::buf::Str::read(&mut r).ok()?;
+    let Tag::Compound(client) = horizon_protocol::buf::Nbt::read(&mut r).ok()? else {
+        return None;
+    };
+    Some((pos, id, client))
+}
+
+/// The client view packets of the mod block entities in these columns.
+pub fn mod_block_entity_packets(
+    block_entities: &HashMap<(i32, i32, i32), BlockEntity>,
+    columns: &crate::fast_hash::FxHashSet<(i32, i32)>,
+) -> Vec<((i32, i32), play::Clientbound)> {
+    if columns.is_empty() {
+        return Vec::new();
+    }
+    let mut out: Vec<_> = block_entities
+        .iter()
+        .filter(|(p, _)| columns.contains(&(p.0 >> 4, p.2 >> 4)))
+        .filter_map(|(p, e)| Some((*p, mod_block_entity_packet(*p, e)?)))
+        .collect();
+    out.sort_by_key(|(p, _)| *p);
+    out.into_iter()
+        .map(|(p, c)| ((p.0 >> 4, p.2 >> 4), c))
+        .collect()
+}
+
 /// The update tag of a block entity (getUpdateTag) for what the client shows.
 pub fn entity_tag(entity: &BlockEntity) -> Option<Tag> {
     match entity {
@@ -1248,6 +1315,47 @@ fn write_light(lights: &[(usize, SectionLight)], sky: bool, w: &mut Writer) {
 mod tests {
     use super::*;
     use crate::chunk::{MIN_Y, SECTIONS};
+
+    #[test]
+    fn mod_block_entities_send_their_client_compound_only() {
+        use crate::containers::ModBlockEntity;
+        use horizon_world::nbt::Compound;
+        let mut client = Compound::new();
+        client.insert("active".into(), Tag::Byte(1));
+        let mut nbt = Compound::new();
+        nbt.insert("energy".into(), Tag::Long(400));
+        nbt.insert("client".into(), Tag::Compound(client.clone()));
+        let machine = BlockEntity::Mod(Box::new(ModBlockEntity {
+            id: "mekanism:enrichment_chamber".into(),
+            nbt,
+            ..ModBlockEntity::default()
+        }));
+        let quiet = BlockEntity::Mod(Box::new(ModBlockEntity {
+            id: "mekanism:steel_casing".into(),
+            ..ModBlockEntity::default()
+        }));
+        let Some(play::Clientbound::CustomPayload(p)) =
+            mod_block_entity_packet((-17, 64, 33), &machine)
+        else {
+            panic!("no packet");
+        };
+        assert_eq!(p.channel, MOD_BLOCK_ENTITY_CHANNEL);
+        let (pos, id, read) = read_mod_block_entity(&p.data).unwrap();
+        assert_eq!(pos, [-17, 64, 33]);
+        assert_eq!(id, "mekanism:enrichment_chamber");
+        // The client sees its view, never the rest of the server's NBT.
+        assert_eq!(read, client);
+        assert!(mod_block_entity_packet((0, 64, 0), &quiet).is_none());
+        let mut map = HashMap::new();
+        map.insert((-17, 64, 33), machine);
+        map.insert((1, 64, 1), quiet);
+        let columns: crate::fast_hash::FxHashSet<_> = [(-2, 2), (0, 0)].into_iter().collect();
+        let sent = mod_block_entity_packets(&map, &columns);
+        assert_eq!(sent.len(), 1);
+        assert_eq!(sent[0].0, (-2, 2));
+        let other: crate::fast_hash::FxHashSet<_> = [(5, 5)].into_iter().collect();
+        assert!(mod_block_entity_packets(&map, &other).is_empty());
+    }
 
     #[test]
     fn block_entity_blocks_are_recognised() {

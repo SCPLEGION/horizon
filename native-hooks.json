@@ -184,6 +184,11 @@
       "name": "server_payload",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_server_payload"
+    },
+    {
+      "name": "client_block_entity_changed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_client_block_entity_changed"
     }
   ]
 }
