@@ -6,6 +6,11 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 22 adds mod networking: packets on a mod's own channel from the
+//! server to a player's client (`native_send_to_player`, heard by
+//! `native_client_payload`) and back (`native_send_to_server`,
+//! `native_server_payload`).
+//!
 //! API 21 adds right clicking a block (`native_right_click_block`), and in
 //! `native_server.rs` the acting player (`native_acting_player`), a player's
 //! health, the action bar (`native_action_bar`) and commands run as the
@@ -111,7 +116,32 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 21;
+pub(crate) const NATIVE_HOOKS_API: u32 = 22;
+
+/// The largest mod packet a server sends a client (vanilla's clientbound
+/// custom payload limit, 1 MiB). API 22.
+pub(super) const NATIVE_PAYLOAD_TO_CLIENT: usize = 1 << 20;
+/// The largest mod packet a client sends the server (vanilla's serverbound
+/// custom payload limit). API 22.
+pub(super) const NATIVE_PAYLOAD_TO_SERVER: usize = 32_767;
+
+/// Whether `channel` is a mod's: `namespace:path` in resource characters,
+/// not vanilla's or Horizon's own.
+pub(super) fn mod_channel(channel: &str) -> bool {
+    let Some((ns, path)) = channel.split_once(':') else {
+        return false;
+    };
+    let ok = |s: &str, extra: &[u8]| {
+        !s.is_empty()
+            && s.bytes().all(|b| {
+                b.is_ascii_lowercase()
+                    || b.is_ascii_digit()
+                    || b"_-.".contains(&b)
+                    || extra.contains(&b)
+            })
+    };
+    ok(ns, b"") && ok(path, b"/") && ns != "minecraft" && ns != "horizon" && channel.len() <= 256
+}
 
 impl GameLevel<'_> {
     /// An authoritative server committed a changed state through `Level.setBlock`.
@@ -721,6 +751,20 @@ impl Game<'_> {
     ) {
         let _ = (pos, face, canceled);
     }
+    /// A mod's packet from the server reached this client: `channel` is the
+    /// mod's own (`mymod:sync`), `data` what the server's
+    /// `native_send_to_player` sent. On every client of a server, the
+    /// window's own in single player included. API 22.
+    pub(super) fn native_client_payload(&mut self, channel: &str, data: &[u8]) {
+        let _ = (channel, data);
+    }
+    /// A mod's packet from player `player` (UUID) reached the server:
+    /// `channel` is the mod's own, `data` what that player's client sent with
+    /// `native_send_to_server`, at most `NATIVE_PAYLOAD_TO_SERVER` bytes.
+    /// Server-side; trust nothing in it. API 22.
+    pub(super) fn native_server_payload(&mut self, player: u128, channel: &str, data: &[u8]) {
+        let _ = (player, channel, data);
+    }
 }
 
 /// Helpers for native mods, kept as stable as the hook points.
@@ -779,6 +823,51 @@ impl GameLevel<'_> {
 // Native mods use these; nothing in Horizon does.
 #[allow(dead_code)]
 impl Game<'_> {
+    /// Sends a mod's packet on `channel` to player `uuid`'s client, where
+    /// `native_client_payload` hears it: a server mod telling a client what a
+    /// machine shows. False when the channel is not a mod's (namespaced, not
+    /// `minecraft:` or `horizon:`), `data` is over `NATIVE_PAYLOAD_TO_CLIENT`
+    /// bytes, or the player isn't on. Inside that player's own hook it goes
+    /// with the hook's other packets. API 22.
+    pub(super) fn native_send_to_player(&mut self, uuid: u128, channel: &str, data: &[u8]) -> bool {
+        if !mod_channel(channel) || data.len() > NATIVE_PAYLOAD_TO_CLIENT {
+            return false;
+        }
+        let packet = horizon_protocol::packets::play::Clientbound::CustomPayload(
+            horizon_protocol::packets::configuration::CustomPayload {
+                channel: channel.into(),
+                data: data.to_vec(),
+            },
+        );
+        if self.lan_acting_uuid == Some(uuid) {
+            self.guest_packets.push(packet);
+            return true;
+        }
+        let Some(host) = &self.lan else {
+            return false;
+        };
+        let Some(g) = host.hub.guests.iter().find(|g| g.placed && g.uuid == uuid) else {
+            return false;
+        };
+        host.hub.send_to(g.conn, &packet);
+        true
+    }
+    /// Sends a mod's packet on `channel` from this client to the server it
+    /// plays on, where `native_server_payload` hears it: a button with a
+    /// value, a key held. False with no server, a channel that is not a mod's,
+    /// or `data` over `NATIVE_PAYLOAD_TO_SERVER` bytes. API 22.
+    pub(super) fn native_send_to_server(&self, channel: &str, data: &[u8]) -> bool {
+        if !mod_channel(channel) || data.len() > NATIVE_PAYLOAD_TO_SERVER || self.remote.is_none() {
+            return false;
+        }
+        self.send(horizon_protocol::packets::play::Serverbound::CustomPayload(
+            horizon_protocol::packets::configuration::CustomPayload {
+                channel: channel.into(),
+                data: data.to_vec(),
+            },
+        ));
+        true
+    }
     /// Whether the player left mod `mod_id` on in Options > Mods. A mod
     /// turned off does nothing (check this first in each hook) until the
     /// launcher's next build leaves it out.
@@ -1619,6 +1708,24 @@ mod tests {
         assert!(s.set_data(4, 1, 7));
         assert!(!s.set_data(3, 1, 99));
         assert_eq!(s.data, [0, 7]);
+    }
+
+    #[test]
+    fn mod_channels_are_namespaced_and_not_vanillas() {
+        for ok in ["mekanism:sync", "my_mod:a/b-c.d"] {
+            assert!(super::mod_channel(ok), "{ok}");
+        }
+        for bad in [
+            "sync",
+            "minecraft:brand",
+            "horizon:quiet",
+            "Mek:sync",
+            ":x",
+            "m:",
+            "m:a b",
+        ] {
+            assert!(!super::mod_channel(bad), "{bad}");
+        }
     }
 
     #[test]

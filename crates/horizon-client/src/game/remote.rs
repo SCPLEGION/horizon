@@ -3622,6 +3622,7 @@ impl Game<'_> {
                     self.titles.reset_times();
                 }
             }
+            C::CustomPayload(p) => self.native_client_payload(&p.channel, &p.data),
             _ => {}
         }
         Ok(())

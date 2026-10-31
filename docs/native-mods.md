@@ -107,6 +107,13 @@ output), so `execute in <dimension> run tp <player> <x> <y> <z>` moves a player 
 tells a player why, even inside their own hook; and the players
 `native_server_players` lists carry their health. Bundles that use them need `"hooks": 21`.
 
+API 22 adds mod networking: a server mod sends a packet on its own channel (`mymod:sync`, never `minecraft:` or
+`horizon:`) to a player's client with `native_send_to_player(uuid, channel, data)` (up to 1 MiB), and that client's
+`native_client_payload(channel, data)` hears it; a client sends one to the server with `native_send_to_server(channel,
+data)` (up to 32,767 bytes), heard by `native_server_payload(player, channel, data)`. They travel as vanilla's custom
+payload packets, so a client without the mod ignores them. The window's own client in single player gets them too. A
+server mod never trusts what a client sends. Bundles that use them need `"hooks": 22`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
