@@ -131,6 +131,10 @@ API 25 adds `native_destroy_speed(stack, block, hardness, speed)`: the speed the
 mines fast while it holds energy and slowly once empty). It runs on the client, which draws the crack, and on the
 server, which times the break, so both must answer the same. Bundles that use it need `"hooks": 25`.
 
+API 26 runs `native_server_payload` as the player who sent the packet: their state is swapped in, as for
+`native_right_click_block`, so the hook can read and change what they wear and carry, and `native_acting_player` names
+them (a jetpack's fuel goes down while its wearer's client says it thrusts). Bundles that rely on it need `"hooks": 26`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

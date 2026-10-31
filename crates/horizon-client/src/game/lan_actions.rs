@@ -1636,9 +1636,13 @@ impl Game<'_> {
             S::CustomPayload(p) if p.channel == horizon_protocol::quiet::CHANNEL => {
                 self.guest_quiet_commands(host, conn, &p.data)
             }
+            // As the sending player since API 26: their state is swapped in, so the hook can
+            // read and change what they wear and carry (`native_acting_player` names them).
             S::CustomPayload(p) if super::native_hooks::mod_channel(&p.channel) => {
                 let uuid = host.hub.guests[gi].uuid;
-                self.native_server_payload(uuid, &p.channel, &p.data);
+                self.as_guest(host, conn, |game| {
+                    game.native_server_payload(uuid, &p.channel, &p.data)
+                });
             }
             S::ChatCommandSigned(p) => self.guest_signed_command(host, conn, p),
             S::ChangeDifficulty(p) if host.hub.guests[gi].permission >= 2 => {
