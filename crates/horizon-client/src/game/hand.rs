@@ -266,6 +266,7 @@ impl Game<'_> {
         }
         let held = self.held();
         let mut speed = self.items().mining_speed(held, &facts.name);
+        self.native_destroy_speed(held, &facts.name, facts.hardness, &mut speed);
         speed = self.modify_destroy_speed(speed);
         speed *= block_break_speed;
         if let Some(eye) = self.eye_position()
