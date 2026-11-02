@@ -159,6 +159,11 @@ Bundles that use them need `"hooks": 30`.
 API 31 adds `native_sprite_tinted(batch, name, src, dst, argb)`: `native_sprite` multiplied by a colour, for a
 mod's GUI tabs in their type's colour and gauges in their chemical's. Bundles that use it need `"hooks": 31`.
 
+API 32 adds windows over a mod screen. `native_screen_overlay` draws after the screen's items, labels and the player's
+inventory, for a window that covers slots (a side configuration or upgrade window). `native_screen_covers` says
+which points that window covers: there the slots under it take no presses, do not light up and show no tooltips,
+and a press goes to `native_screen_click` and stops there. Client-side. Bundles that use them need `"hooks": 32`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

@@ -148,7 +148,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 31;
+pub(crate) const NATIVE_HOOKS_API: u32 = 32;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -665,6 +665,32 @@ impl Game<'_> {
         lines: &mut Vec<String>,
     ) {
         let _ = (block, data, at, lines);
+    }
+    /// Draw over block `block`'s screen, a mod's, after its items, labels
+    /// and the player's inventory: a window of the mod's own that covers
+    /// slots (`native_screen_draw` is under them). Same `data` and `origin`
+    /// as there. API 32.
+    pub(super) fn native_screen_overlay(
+        &self,
+        block: &str,
+        data: &[i32],
+        batch: &mut HudBatch,
+        origin: [f32; 2],
+    ) {
+        let _ = (block, data, batch, origin);
+    }
+    /// Whether the mod's own drawing covers `at` (as in
+    /// `native_screen_click`) on block `block`'s screen: set `covered` and
+    /// the slots there neither take presses nor light up or show their
+    /// tooltips; the press goes to `native_screen_click` and stops there. API 32.
+    pub(super) fn native_screen_covers(
+        &self,
+        block: &str,
+        data: &[i32],
+        at: [f32; 2],
+        covered: &mut bool,
+    ) {
+        let _ = (block, data, at, covered);
     }
     /// A player pressed menu button `id` on the menu of the mod block entity
     /// at `pos` (`AbstractContainerMenu.clickMenuButton`), on the server:
@@ -1783,7 +1809,8 @@ impl Game<'_> {
     /// A press on the open mod screen's own button (`native_screen_click`)
     /// goes to the server as a menu button click (true).
     pub(super) fn native_screen_press(&mut self, right: bool) -> bool {
-        if self.inventory_target().0.is_some() {
+        let covered = self.native_screen_covered();
+        if !covered && self.inventory_target().0.is_some() {
             return false;
         }
         let Some((block, data, at)) = self.native_screen_at() else {
@@ -1792,7 +1819,8 @@ impl Game<'_> {
         let mut button = None;
         self.native_screen_click(&block, &data, at, right, &mut button);
         let Some(button) = button else {
-            return false;
+            // A press on the mod's own window stops there.
+            return covered;
         };
         let window = self
             .remote
@@ -1809,9 +1837,29 @@ impl Game<'_> {
         self.audio.play_button_click();
         true
     }
+    /// Whether the open mod screen's own drawing covers the cursor
+    /// (`native_screen_covers`): its slots there are hidden from the player.
+    pub(super) fn native_screen_covered(&self) -> bool {
+        let Some((block, data, at)) = self.native_screen_at() else {
+            return false;
+        };
+        let mut covered = false;
+        self.native_screen_covers(&block, &data, at, &mut covered);
+        covered
+    }
+    /// The open mod screen's overlay (`native_screen_overlay`), over its
+    /// items and labels.
+    pub(super) fn draw_native_screen_overlay(&self, batch: &mut HudBatch) {
+        let Some(s) = self.shown_native_screen() else {
+            return;
+        };
+        let (ox, oy) = self.inventory_origin(batch);
+        self.native_screen_overlay(&s.block, &s.data, batch, [ox, oy]);
+    }
     /// The open mod screen's tooltip under the cursor (`native_screen_tooltip`).
     pub(super) fn draw_native_screen_tooltip(&self, batch: &mut HudBatch) {
-        if self.carried.is_some() || self.slot_at(batch, self.cursor.0, self.cursor.1).is_some() {
+        let over_slot = self.slot_at(batch, self.cursor.0, self.cursor.1).is_some();
+        if self.carried.is_some() || (over_slot && !self.native_screen_covered()) {
             return;
         }
         let Some((block, data, at)) = self.native_screen_at() else {

@@ -121,6 +121,16 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_tooltip"
     },
     {
+      "name": "screen_overlay",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_overlay"
+    },
+    {
+      "name": "screen_covers",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_covers"
+    },
+    {
       "name": "menu_button",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_menu_button"
