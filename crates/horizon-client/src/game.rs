@@ -14670,6 +14670,14 @@ impl ApplicationHandler for Game<'_> {
                     self.mod_browser_key(&event);
                 }
                 WindowEvent::KeyboardInput { event, .. }
+                    if event.state == ElementState::Pressed
+                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape))
+                        && self.native_screen_typing_now() =>
+                {
+                    // A mod screen's text box takes every key but Escape.
+                    self.native_screen_key_press(&event);
+                }
+                WindowEvent::KeyboardInput { event, .. }
                     if self.station_typing()
                         && event.state == ElementState::Pressed
                         && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape)) =>

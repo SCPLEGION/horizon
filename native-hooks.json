@@ -131,6 +131,16 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_covers"
     },
     {
+      "name": "screen_typing",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_typing"
+    },
+    {
+      "name": "screen_key",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_key"
+    },
+    {
       "name": "menu_button",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_menu_button"

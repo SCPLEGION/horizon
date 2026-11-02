@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 33 adds text boxes on mod screens (`native_screen_typing`,
+//! `native_screen_key`) and `native_set_clipboard`.
+//!
 //! API 31 adds `native_sprite_tinted`, a GUI sprite drawn in a colour (a
 //! mod's tabs and gauges).
 //!
@@ -148,7 +151,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 32;
+pub(crate) const NATIVE_HOOKS_API: u32 = 33;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -692,6 +695,34 @@ impl Game<'_> {
     ) {
         let _ = (block, data, at, covered);
     }
+    /// Whether a text box of the mod's own has focus on block `block`'s
+    /// screen, a mod's: set `typing` and every key press but Escape goes to
+    /// `native_screen_key` instead of the game (the inventory key, hotbar
+    /// keys and drop no longer act), as vanilla's anvil rename box takes
+    /// them. Same `data` as in `native_screen_draw`. API 33.
+    pub(super) fn native_screen_typing(&self, block: &str, data: &[i32], typing: &mut bool) {
+        let _ = (block, data, typing);
+    }
+    /// A key press (or repeat) while `native_screen_typing` holds on block
+    /// `block`'s screen: `key` is its name as in `native_key`
+    /// (`key.keyboard.backspace`...), `text` what it types, if anything
+    /// (control characters left out), with `ctrl` and `shift` held. The
+    /// edit shortcut with V comes as `key.keyboard.v` with the clipboard's
+    /// text in `text`; with A, C or X the mod answers it itself
+    /// (`native_set_clipboard` for copy and cut). Send what the box holds
+    /// with `native_send_to_server`. API 33.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn native_screen_key(
+        &mut self,
+        block: &str,
+        data: &[i32],
+        key: &str,
+        text: Option<&str>,
+        ctrl: bool,
+        shift: bool,
+    ) {
+        let _ = (block, data, key, text, ctrl, shift);
+    }
     /// A player pressed menu button `id` on the menu of the mod block entity
     /// at `pos` (`AbstractContainerMenu.clickMenuButton`), on the server:
     /// change `entity` when its id is yours. It is out of the world during
@@ -972,6 +1003,11 @@ impl Game<'_> {
         };
         host.hub.send_to(g.conn, &packet);
         true
+    }
+    /// Sets the system clipboard (a mod text box's copy and cut). API 33.
+    pub(super) fn native_set_clipboard(&mut self, text: &str) {
+        use horizon_client::clipboard::Clipboard;
+        self.clipboard.set(text);
     }
     /// Sends a mod's packet on `channel` from this client to the server it
     /// plays on, where `native_server_payload` hears it: a button with a
@@ -1867,6 +1903,46 @@ impl Game<'_> {
         }
         self.audio.play_button_click();
         true
+    }
+    /// Whether a text box of the open mod screen has focus
+    /// (`native_screen_typing`): it takes the keys but Escape.
+    pub(super) fn native_screen_typing_now(&self) -> bool {
+        let Some(s) = self.shown_native_screen() else {
+            return false;
+        };
+        let mut typing = false;
+        self.native_screen_typing(&s.block, &s.data, &mut typing);
+        typing
+    }
+    /// A key press while the open mod screen's text box has focus
+    /// (`native_screen_key`).
+    pub(super) fn native_screen_key_press(&mut self, event: &winit::event::KeyEvent) {
+        use horizon_client::clipboard::{Clipboard, EditShortcut};
+        let winit::keyboard::PhysicalKey::Code(code) = event.physical_key else {
+            return;
+        };
+        let Some(name) = keybinds::key_name(code) else {
+            return;
+        };
+        let shortcut = self.edit_shortcut(event);
+        let (ctrl, shift) = (self.has_control_down(), self.has_shift_down());
+        let text = match shortcut {
+            Some(EditShortcut::Paste) => Some(self.clipboard.get()),
+            Some(_) => None,
+            None if self.types_text() => event
+                .text
+                .as_deref()
+                .map(|t| t.chars().filter(|c| !c.is_control()).collect::<String>())
+                .filter(|t| !t.is_empty()),
+            None => None,
+        };
+        let Some((block, data)) = self
+            .shown_native_screen()
+            .map(|s| (s.block.clone(), s.data.clone()))
+        else {
+            return;
+        };
+        self.native_screen_key(&block, &data, name, text.as_deref(), ctrl, shift);
     }
     /// Whether the open mod screen's own drawing covers the cursor
     /// (`native_screen_covers`): its slots there are hidden from the player.
