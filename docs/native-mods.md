@@ -156,6 +156,9 @@ the living mobs and dropped items whose boxes overlap a box, nearest to `from` f
 lost. `native_take_item_entity(id)` picks a dropped item up. A mod's laser and tractor beam use them. Server-side.
 Bundles that use them need `"hooks": 30`.
 
+API 31 adds `native_sprite_tinted(batch, name, src, dst, argb)`: `native_sprite` multiplied by a colour, for a
+mod's GUI tabs in their type's colour and gauges in their chemical's. Bundles that use it need `"hooks": 31`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
