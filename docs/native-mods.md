@@ -167,6 +167,13 @@ and a press goes to `native_screen_click` and stops there. API 32 also adds two 
 `custom_model_data` that picks the model), and `native_text_scaled(batch, text, at, rgb, scale)`. Client-side.
 Bundles that use them need `"hooks": 32`.
 
+API 33 adds text boxes on a mod screen (a frequency name, a filter's tag). While `native_screen_typing` says one of
+the mod's boxes has focus, every key press but Escape goes to `native_screen_key(block, data, key, text, ctrl,
+shift)` instead of the game, as vanilla's anvil rename box takes them: `key` is the key's name, `text` what it types
+(the clipboard's text for the paste shortcut). The mod keeps the box's value itself, sends it with
+`native_send_to_server`, and copies with the new `native_set_clipboard(text)` helper. Client-side. Bundles that use
+them need `"hooks": 33`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
