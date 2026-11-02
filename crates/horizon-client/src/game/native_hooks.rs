@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 29 adds `native_extract_item_where`, taking only the items a mod's
+//! filter wants out of a container (a sorter).
+//!
 //! API 28 adds `native_player_damage`, a player's damage taken by a mod's
 //! armor (a powered suit that spends energy on each hit).
 //!
@@ -138,7 +141,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 28;
+pub(crate) const NATIVE_HOOKS_API: u32 = 29;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1158,6 +1161,17 @@ impl Game<'_> {
         max: u32,
     ) -> Option<ItemStack> {
         self.extract_from_container((pos[0], pos[1], pos[2]), face, max)
+    }
+    /// `native_extract_item`, taking only from a stack `wanted` accepts: the
+    /// first such stack the side gives out. API 29.
+    pub(super) fn native_extract_item_where(
+        &mut self,
+        pos: [i32; 3],
+        face: Direction,
+        max: u32,
+        wanted: &dyn Fn(&ItemStack) -> bool,
+    ) -> Option<ItemStack> {
+        self.extract_from_container_where((pos[0], pos[1], pos[2]), face, max, wanted)
     }
     /// Where the mouse is, in GUI pixels. API 20.
     pub(super) fn native_cursor(&self) -> [f32; 2] {

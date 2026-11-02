@@ -146,6 +146,10 @@ took since the last call, for the mod to pay for (a powered suit spends energy o
 to come. Called right after an absorbed hit and every 10 ticks otherwise, the player's state swapped in. Server-side.
 Bundles that use it need `"hooks": 28`.
 
+API 29 adds `native_extract_item_where(pos, face, max, wanted)`: `native_extract_item`, but it skips the stacks
+`wanted` turns down and takes from the first one it accepts (a sorter that moves only its filters' items). Bundles
+that use it need `"hooks": 29`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
