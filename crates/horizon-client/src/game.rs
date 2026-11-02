@@ -80,6 +80,7 @@ mod control;
 mod copper_golems;
 mod creaking;
 mod creative_hotbar;
+mod creative_pages;
 mod creatures;
 mod crossbow;
 pub(crate) mod cushions;
@@ -12355,6 +12356,7 @@ impl Game<'_> {
             batch.height,
             rgba(16, 16, 16, 160),
         );
+        self.draw_creative_pages(batch, ox, oy);
         // Unselected tabs behind the panel, then the panel, then the selected tab.
         for (i, t) in tabs.iter().enumerate() {
             if i != selected {
@@ -12566,6 +12568,9 @@ impl Game<'_> {
         let batch = HudBatch::new(size);
         let (ox, oy) = Self::creative_origin(&batch);
         let (cx, cy) = self.cursor;
+        if self.click_creative_pages(ox, oy) {
+            return;
+        }
         let tabs = self.creative_screen.tabs.clone();
         for (i, t) in tabs.iter().enumerate() {
             let (tx, ty) = Creative::tab_position(t);
@@ -13526,6 +13531,7 @@ impl Game<'_> {
                         }
                         if self.creative {
                             self.screen = Screen::Creative;
+                            self.load_mod_creative_tabs();
                             self.refresh_creative_tabs();
                             self.creative_screen.reopen();
                             self.refresh_saved_hotbars();

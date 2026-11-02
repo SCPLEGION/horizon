@@ -45,6 +45,11 @@ impl Tab {
 #[derive(Clone, Debug)]
 struct Exported {
     tab: Tab,
+    /// The page of tabs it is on (`CreativeModeInventoryScreen` pages, as
+    /// NeoForge has them): 0 for vanilla's; special tabs show on every page.
+    page: usize,
+    /// A mod's tab (`set_mod_tabs`), not vanilla's.
+    modded: bool,
     /// `CreativeModeTab.Type.CATEGORY`: shown only with a stack (`shouldDisplay`).
     category: bool,
     operator: Vec<bool>,
@@ -60,6 +65,17 @@ struct SearchEntry {
     lines: Vec<String>,
     /// Item tags as (namespace, path), lower-cased.
     tags: Vec<(String, String)>,
+    /// A mod's stack (`set_mod_tabs`).
+    modded: bool,
+}
+/// A tab a mod adds (`native_creative_tabs`).
+#[derive(Clone, Debug)]
+pub struct ModTab {
+    pub id: String,
+    /// A language key, or the text itself.
+    pub title: String,
+    pub icon: String,
+    pub items: Vec<ItemStack>,
 }
 pub struct Creative {
     /// The tabs shown (`CreativeModeTabs.tabs()`), with the stacks the current
@@ -82,6 +98,9 @@ pub struct Creative {
     /// The `hasPermissions` the tabs were last built with
     /// (`CreativeModeTabs.tryRebuildTabContents`).
     permissions: bool,
+    /// The page of tabs shown (0 is vanilla's; mods' tabs fill the next ones,
+    /// ten to a page).
+    pub page: usize,
     /// ItemPickerMenu.items: what the grid shows, filled when the tab or the
     /// search changes (selectTab, refreshSearchResults), not on every frame.
     shown: Mutex<Option<Shown>>,
@@ -270,6 +289,7 @@ impl Creative {
                         path,
                         lines: strings(&t["lines"][i]),
                         tags: strings(&t["tags"][i]).iter().map(|t| split_id(t)).collect(),
+                        modded: false,
                     };
                     search.push((stack.clone(), entry, operator[i]));
                 }
@@ -278,6 +298,8 @@ impl Creative {
                 .as_str()
                 .and_then(|s| crate::item_data::parse_stack(s).ok().flatten());
             tabs.push(Exported {
+                page: 0,
+                modded: false,
                 tab: Tab {
                     id: t["id"].as_str().unwrap_or("").to_owned(),
                     title: t["title"].as_str().unwrap_or("").to_owned(),
@@ -316,6 +338,8 @@ impl Creative {
             }
             let kind = t["type"].as_str().unwrap_or("");
             tabs.push(Exported {
+                page: 0,
+                modded: false,
                 operator: vec![false; items.len()],
                 tab: Tab {
                     id: t["id"].as_str().unwrap_or("").to_owned(),
@@ -363,6 +387,7 @@ impl Creative {
             exported,
             exported_search,
             permissions: false,
+            page: 0,
             shown: Mutex::new(None),
         };
         creative.rebuild();
@@ -378,6 +403,7 @@ impl Creative {
         self.tabs = self
             .exported
             .iter()
+            .filter(|e| e.page == self.page || e.tab.column >= 5)
             .filter_map(|e| {
                 let items: Vec<ItemStack> = (e.tab.items.iter().zip(&e.operator))
                     .filter(|(_, o)| keep(**o))
@@ -433,6 +459,67 @@ impl Creative {
             }
         }
         true
+    }
+    /// Replaces the tabs of mods (`native_creative_tabs`): each gets a slot
+    /// after vanilla's ten (five on top, five below), a page of ten at a
+    /// time, and its stacks join the search tab. The selected tab stays when
+    /// it is still there; else the default one.
+    pub fn set_mod_tabs(&mut self, mods: Vec<ModTab>) {
+        let selected = self.tab().id.clone();
+        self.exported.retain(|e| !e.modded);
+        self.exported_search.retain(|(_, e, _)| !e.modded);
+        for (n, m) in mods.into_iter().enumerate() {
+            let slot = n % 10;
+            for stack in &m.items {
+                let (namespace, path) = split_id(&java_lower(&stack.item));
+                let entry = SearchEntry {
+                    namespace,
+                    path,
+                    modded: true,
+                    ..Default::default()
+                };
+                self.exported_search.push((stack.clone(), entry, false));
+            }
+            let operator = vec![false; m.items.len()];
+            self.exported.push(Exported {
+                page: 1 + n / 10,
+                modded: true,
+                category: true,
+                operator,
+                tab: Tab {
+                    id: m.id,
+                    title: m.title,
+                    icon: m.icon,
+                    items: m.items,
+                    top: slot < 5,
+                    column: (slot % 5) as u32,
+                    search: false,
+                    inventory: false,
+                    hotbar: false,
+                },
+            });
+        }
+        let last = self.page_count() - 1;
+        self.page = self.page.min(last);
+        self.rebuild();
+        match self.tabs.iter().position(|t| t.id == selected) {
+            Some(i) => self.selected = i,
+            None => self.selected = 0,
+        }
+    }
+    /// How many pages of tabs there are (1 without mods' tabs).
+    pub fn page_count(&self) -> usize {
+        self.exported.iter().map(|e| e.page).max().unwrap_or(0) + 1
+    }
+    /// Turns to `page` (wrapping): the page's first tab is selected, as
+    /// NeoForge's page buttons do.
+    pub fn set_page(&mut self, page: isize) {
+        let count = self.page_count() as isize;
+        self.page = page.rem_euclid(count) as usize;
+        self.rebuild();
+        let first = self.tabs.iter().position(|t| t.column < 5);
+        self.selected = usize::MAX;
+        self.select(first.unwrap_or(0));
     }
     /// Where a stack comes in the creative tabs (the search tab lists them
     /// all, in tab order): the same stack's place, else its item's first.
@@ -1087,6 +1174,44 @@ mod tests {
         assert_eq!(carried, None);
     }
 
+    fn mod_tab(id: &str, items: usize) -> ModTab {
+        ModTab {
+            id: id.to_owned(),
+            title: id.to_owned(),
+            icon: "minecraft:stone".to_owned(),
+            items: (0..items).map(|i| stack(&format!("{id}_{i}"), 1)).collect(),
+        }
+    }
+    #[test]
+    fn mod_tabs_fill_pages_after_vanillas_and_join_search() {
+        let mut c = creative(2);
+        let vanilla = c.tabs.len();
+        assert_eq!(c.page_count(), 1);
+        c.set_mod_tabs((0..12).map(|i| mod_tab(&format!("m{i}"), 1)).collect());
+        assert_eq!(c.page_count(), 3);
+        // Page 0: vanilla's tabs only; the search and inventory tabs stay.
+        assert_eq!(c.tabs.len(), vanilla);
+        c.set_page(1);
+        let ids: Vec<&str> = c.tabs.iter().map(|t| t.id.as_str()).collect();
+        assert!(ids.contains(&"m0") && ids.contains(&"m9") && !ids.contains(&"m10"));
+        assert!(ids.contains(&"minecraft:search") && ids.contains(&"minecraft:inventory"));
+        let m5 = c.tabs.iter().find(|t| t.id == "m5").unwrap();
+        assert!(!m5.top && m5.column == 0);
+        assert_eq!(c.tab().id, "m0");
+        c.set_page(2);
+        assert_eq!(c.tab().id, "m10");
+        c.set_page(3);
+        assert_eq!(c.page, 0);
+        assert!(
+            c.search_items()
+                .iter()
+                .any(|s| &*s.item == "minecraft:m11_0")
+        );
+        // Taking the mods' tabs away leaves vanilla's.
+        c.set_mod_tabs(Vec::new());
+        assert_eq!((c.page_count(), c.page, c.tabs.len()), (1, 0, vanilla));
+        assert!(!c.search_items().iter().any(|s| s.item.contains("m11")));
+    }
     fn creative(items: usize) -> Creative {
         let mut stacks: Vec<String> = ["anvil", "crafting_table", "wooden_hoe"]
             .iter()

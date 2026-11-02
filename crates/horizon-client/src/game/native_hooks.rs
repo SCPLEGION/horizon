@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 34 adds creative tabs for mods (`native_creative_tabs`) and the pages
+//! the creative screen needs for them.
+//!
 //! API 33 adds text boxes on mod screens (`native_screen_typing`,
 //! `native_screen_key`) and `native_set_clipboard`.
 //!
@@ -151,7 +154,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 33;
+pub(crate) const NATIVE_HOOKS_API: u32 = 34;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -325,6 +328,19 @@ pub(crate) struct NativeStack {
     pub(crate) item: String,
     pub(crate) count: u32,
     pub(crate) components: String,
+}
+
+/// A creative tab a mod adds (`native_creative_tabs`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct NativeCreativeTab {
+    /// `mymod:machines`; the tab's identity, kept when the player turns pages.
+    pub(crate) id: String,
+    /// A language key (`itemGroup.mymod.machines`) or the text itself.
+    pub(crate) title: String,
+    /// The item drawn on the tab (`mymod:digital_miner`).
+    pub(crate) icon: String,
+    /// The tab's stacks, in order; items the game does not have are left out.
+    pub(crate) items: Vec<NativeStack>,
 }
 
 /// How the panel lays out a recipe of `native_panel_recipes`.
@@ -776,6 +792,13 @@ impl Game<'_> {
     /// opened another, or the player left. API 10.
     pub(super) fn native_menu_closed(&mut self, uuid: u128, window: i32) {
         let _ = (uuid, window);
+    }
+    /// The creative tabs mods add, asked each time the creative inventory
+    /// opens: push a tab per module (Mekanism, Generators...). They follow
+    /// vanilla's, ten to a page, with `<` and `>` buttons to turn pages as
+    /// NeoForge has them; their stacks join the search tab. API 34.
+    pub(super) fn native_creative_tabs(&self, tabs: &mut Vec<NativeCreativeTab>) {
+        let _ = tabs;
     }
     /// An item's tooltip, wherever the game shows one (slots, the creative
     /// tabs, the recipe book, chat's hover): the stack, with its components
