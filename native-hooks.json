@@ -131,6 +131,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_covers"
     },
     {
+      "name": "creative_tabs",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_creative_tabs"
+    },
+    {
       "name": "screen_typing",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_typing"

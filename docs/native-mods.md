@@ -174,6 +174,12 @@ shift)` instead of the game, as vanilla's anvil rename box takes them: `key` is 
 `native_send_to_server`, and copies with the new `native_set_clipboard(text)` helper. Client-side. Bundles that use
 them need `"hooks": 33`.
 
+API 34 adds creative tabs for mods. `native_creative_tabs(tabs)` is asked each time the creative inventory opens: push
+a `NativeCreativeTab` (`id`, `title`, an `icon` item, `items`) per module. Vanilla's ten ordinary tabs fill the first
+page, a mod's follow, ten to a page, and `<` `>` buttons above the screen turn pages (as NeoForge's do; they show only
+when a mod added tabs). The title is a language key or plain text; the stacks also join the search tab. Client-side.
+Bundles that use it need `"hooks": 34`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
