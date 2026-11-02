@@ -626,6 +626,16 @@ impl Game<'_> {
         face: Direction,
         max: u32,
     ) -> Option<ItemStack> {
+        self.extract_from_container_where(pos, face, max, &|_| true)
+    }
+    /// `extract_from_container`, skipping the stacks `wanted` turns down.
+    pub(super) fn extract_from_container_where(
+        &mut self,
+        pos: Pos,
+        face: Direction,
+        max: u32,
+        wanted: &dyn Fn(&ItemStack) -> bool,
+    ) -> Option<ItemStack> {
         let source = self.containers().view(pos, false)?;
         if let Kind::Composter(_) = source.kind {
             return None;
@@ -635,7 +645,7 @@ impl Game<'_> {
             let Some(stack) = c.get(&source, slot) else {
                 continue;
             };
-            if max == 0 || !c.can_take(&source, slot, stack, face) {
+            if max == 0 || !wanted(stack) || !c.can_take(&source, slot, stack, face) {
                 continue;
             }
             let target = self.slot_mut_at(&source, slot)?;
