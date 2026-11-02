@@ -135,6 +135,11 @@ API 26 runs `native_server_payload` as the player who sent the packet: their sta
 `native_right_click_block`, so the hook can read and change what they wear and carry, and `native_acting_player` names
 them (a jetpack's fuel goes down while its wearer's client says it thrusts). Bundles that rely on it need `"hooks": 26`.
 
+API 27 adds `native_player_attack(target, strength, amount)`: a player's melee hit on a mob, with the damage
+`Player.attack` worked out (attack damage, attack strength `strength` from 0 to 1, enchantments) before the mob takes
+it. A mod's weapon changes `amount` (a powered sword adds damage and spends its energy). The hitting player's state is
+swapped in. Server-side. Bundles that use it need `"hooks": 27`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

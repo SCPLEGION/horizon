@@ -171,6 +171,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_destroy_speed"
     },
     {
+      "name": "player_attack",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_player_attack"
+    },
+    {
       "name": "place_block",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_place_block"

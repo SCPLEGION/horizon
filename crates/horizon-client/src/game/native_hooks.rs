@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 27 adds `native_player_attack`, the damage of a player's melee hit on
+//! a mob (a mod's powered weapon).
+//!
 //! API 26 runs `native_server_payload` as the sending player, their state
 //! swapped in (a worn item's fuel spent on the client's word).
 //!
@@ -132,7 +135,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 26;
+pub(crate) const NATIVE_HOOKS_API: u32 = 27;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -716,6 +719,16 @@ impl Game<'_> {
         speed: &mut f32,
     ) {
         let _ = (stack, block, hardness, speed);
+    }
+    /// A player's melee hit on the mob of type `target` (`minecraft:zombie`):
+    /// `amount` is its damage as `Player.attack` worked it out from the
+    /// attack damage attribute, the attack strength `strength` (0 to 1, the
+    /// cooldown) and the enchantments, before the mob takes it. A mod's weapon
+    /// adds to it or takes from it (a powered sword that spends energy on
+    /// each hit). The acting player's state is swapped in. Server-side, for
+    /// every player of the world. API 27.
+    pub(super) fn native_player_attack(&mut self, target: &str, strength: f32, amount: &mut f32) {
+        let _ = (target, strength, amount);
     }
     /// A player uses `stack` (right click) with `self.hand` on the block at
     /// `pos`, `face` the face clicked (`[0, 1, 0]` is the top), once the
