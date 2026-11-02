@@ -2594,6 +2594,24 @@ impl Game<'_> {
                 self.guest_die(host, gi, conn);
                 continue;
             }
+            // A mod's armor: what it took since the last call, and its share
+            // of the hits to come (`native_player_damage`).
+            let absorbed = host.hub.guests[gi]
+                .motion
+                .as_ref()
+                .map_or(0.0, |m| m.damage_absorbed);
+            if absorbed > 0.0 || self.world.game_time % 10 == 0 {
+                self.as_guest(host, conn, |g| {
+                    if let Some(p) = g.player.as_mut() {
+                        p.damage_absorbed = 0.0;
+                    }
+                    let mut share = g.player.as_ref().map_or(0.0, |p| p.damage_absorption);
+                    g.native_player_damage(absorbed, &mut share);
+                    if let Some(p) = g.player.as_mut() {
+                        p.damage_absorption = share;
+                    }
+                });
+            }
             let play = host.play.entry(conn).or_default();
             // ServerGamePacketListenerImpl.tick's dropSpamThrottler.
             play.creative_drops = play.creative_drops.saturating_sub(1);

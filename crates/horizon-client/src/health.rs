@@ -337,6 +337,14 @@ impl PlayerMotion {
         let before = self.health.health() + self.health.absorption();
         let fire_ticks = self.fire_ticks;
         let source_name = source.definition().name.clone();
+        // A mod's armor takes its share first (`native_player_damage`).
+        let share = if source.in_tag("minecraft:bypasses_armor") {
+            0.0
+        } else {
+            self.damage_absorption.clamp(0.0, 1.0)
+        };
+        let absorbed = amount * share;
+        let dealt = amount - absorbed;
         let totem_ready = self.health.totem_ready;
         let invulnerable = self.invulnerable;
         let h = &mut self.health;
@@ -364,7 +372,7 @@ impl PlayerMotion {
             h.ids,
             &mut environment,
         )?
-        .hurt(&mut h.hurt, amount)?;
+        .hurt(&mut h.hurt, dealt)?;
         let outcome = BlockOutcome {
             hurt,
             blocked: environment.blocked,
@@ -377,6 +385,7 @@ impl PlayerMotion {
         }
         if outcome.hurt {
             h.hurt_animation_time = h.hurt.hurt_time;
+            self.damage_absorbed += absorbed;
         }
         // `dealDefaultKnockback` ends in `indicateDamage` unless blocked: a
         // hit with no direction of its own (`xd` and `zd` zero) is sent as

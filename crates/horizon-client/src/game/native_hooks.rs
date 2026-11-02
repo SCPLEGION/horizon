@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 28 adds `native_player_damage`, a player's damage taken by a mod's
+//! armor (a powered suit that spends energy on each hit).
+//!
 //! API 27 adds `native_player_attack`, the damage of a player's melee hit on
 //! a mob (a mod's powered weapon).
 //!
@@ -135,7 +138,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 27;
+pub(crate) const NATIVE_HOOKS_API: u32 = 28;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -729,6 +732,16 @@ impl Game<'_> {
     /// every player of the world. API 27.
     pub(super) fn native_player_attack(&mut self, target: &str, strength: f32, amount: &mut f32) {
         let _ = (target, strength, amount);
+    }
+    /// A player's damage taken by a mod's armor: `absorbed` is the damage
+    /// that `share` (0 to 1, of each hit not tagged
+    /// `minecraft:bypasses_armor`) kept off them since the last call, to pay
+    /// for; set `share` for the hits to come (a suit with no energy left sets
+    /// it to 0). Called at once after an absorbed hit and every 10 ticks
+    /// otherwise, with the player's state swapped in. Server-side, for every
+    /// player of the world. API 28.
+    pub(super) fn native_player_damage(&mut self, absorbed: f32, share: &mut f32) {
+        let _ = (absorbed, share);
     }
     /// A player uses `stack` (right click) with `self.hand` on the block at
     /// `pos`, `face` the face clicked (`[0, 1, 0]` is the top), once the

@@ -398,6 +398,14 @@ pub struct PlayerMotion {
     /// The last hurts taken (`hurt_blocking`), newest last, for tests and
     /// the control socket's `hurtlog`.
     pub hurt_log: Vec<crate::health::HurtRecord>,
+    /// The share (0 to 1) of each hurt that a mod's armor takes before the
+    /// player's own armor sees it (a powered suit), set by the game from
+    /// `native_player_damage`. Sources tagged `minecraft:bypasses_armor` pass
+    /// it by. Server-side only.
+    pub damage_absorption: f32,
+    /// The damage `damage_absorption` took since the game last read it, for
+    /// the mod to pay for (`native_player_damage`).
+    pub damage_absorbed: f32,
     /// The last melee attacks made on mobs, newest last.
     pub attack_log: Vec<crate::health::AttackRecord>,
     /// The level's world border, whose walls stop the player's movement
@@ -570,6 +578,8 @@ impl PlayerMotion {
             block_effects: true,
             powder_snow_entered: Vec::new(),
             hurt_log: Vec::new(),
+            damage_absorption: 0.0,
+            damage_absorbed: 0.0,
             attack_log: Vec::new(),
             border: None,
         })
