@@ -140,6 +140,12 @@ API 27 adds `native_player_attack(target, strength, amount)`: a player's melee h
 it. A mod's weapon changes `amount` (a powered sword adds damage and spends its energy). The hitting player's state is
 swapped in. Server-side. Bundles that use it need `"hooks": 27`.
 
+API 28 adds `native_player_damage(absorbed, share)`: a mod's armor takes the share `share` (0 to 1) of each hit on a
+player before their own armor sees it, except damage tagged `minecraft:bypasses_armor`. `absorbed` is the damage it
+took since the last call, for the mod to pay for (a powered suit spends energy on it); the mod sets `share` for the hits
+to come. Called right after an absorbed hit and every 10 ticks otherwise, the player's state swapped in. Server-side.
+Bundles that use it need `"hooks": 28`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

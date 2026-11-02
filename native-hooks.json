@@ -176,6 +176,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_player_attack"
     },
     {
+      "name": "player_damage",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_player_damage"
+    },
+    {
       "name": "place_block",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_place_block"
