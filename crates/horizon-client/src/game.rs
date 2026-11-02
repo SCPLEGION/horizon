@@ -7577,7 +7577,11 @@ impl Game<'_> {
         self.draw_inventory_slots(batch, ox, oy);
         self.draw_sort_buttons(batch, ox, oy);
         self.draw_recipe_book(batch);
-        if let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1) {
+        self.draw_native_screen_overlay(batch);
+        let covered = self.native_screen_covered();
+        if let Some(slot) = self.slot_at(batch, self.cursor.0, self.cursor.1)
+            && !covered
+        {
             let (sx, sy) = self.slot_position(slot);
             batch.fill(
                 &self.gui.atlas,
@@ -7589,7 +7593,9 @@ impl Game<'_> {
             );
         }
         self.draw_carried(batch);
-        self.draw_slot_tooltip(batch);
+        if !covered {
+            self.draw_slot_tooltip(batch);
+        }
         self.draw_native_screen_tooltip(batch);
         if self.container.is_none() && self.craft_size == 2 && !self.mount_active() {
             self.draw_inventory_effects(batch, (ox, oy), 176);
