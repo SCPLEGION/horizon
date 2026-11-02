@@ -6,6 +6,9 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 31 adds `native_sprite_tinted`, a GUI sprite drawn in a colour (a
+//! mod's tabs and gauges).
+//!
 //! API 30 adds `native_entities_in`, `native_hurt_mob` and
 //! `native_take_item_entity`: the mobs and dropped items in a box, hurting a
 //! mob, and picking a dropped item up (a mod's laser and tractor beam).
@@ -145,7 +148,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 30;
+pub(crate) const NATIVE_HOOKS_API: u32 = 31;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1102,6 +1105,28 @@ impl Game<'_> {
         r.u1 = r.u0 + src[2] * du;
         r.v1 = r.v0 + src[3] * dv;
         batch.rect_uv(dst[0], dst[1], dst[2], dst[3], r, u32::MAX);
+        true
+    }
+    /// `native_sprite` multiplied by the colour `argb` (white draws it as
+    /// it is): a tab tinted its type's colour, a gauge's chemical. API 31.
+    pub(super) fn native_sprite_tinted(
+        &self,
+        batch: &mut HudBatch,
+        name: &str,
+        src: [f32; 4],
+        dst: [f32; 4],
+        argb: u32,
+    ) -> bool {
+        let Some(mut r) = self.gui.atlas.sprites.get(name).copied() else {
+            return false;
+        };
+        let (du, dv) = ((r.u1 - r.u0) / r.w as f32, (r.v1 - r.v0) / r.h as f32);
+        r.u0 += src[0] * du;
+        r.v0 += src[1] * dv;
+        r.u1 = r.u0 + src[2] * du;
+        r.v1 = r.v0 + src[3] * dv;
+        let [a, red, g, b] = argb.to_be_bytes();
+        batch.rect_uv(dst[0], dst[1], dst[2], dst[3], r, rgba(red, g, b, a));
         true
     }
     /// Item `item`'s icon (`mymod:machine`) with its top left at `at`,
