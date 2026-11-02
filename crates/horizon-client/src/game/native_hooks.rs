@@ -6,6 +6,10 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 30 adds `native_entities_in`, `native_hurt_mob` and
+//! `native_take_item_entity`: the mobs and dropped items in a box, hurting a
+//! mob, and picking a dropped item up (a mod's laser and tractor beam).
+//!
 //! API 29 adds `native_extract_item_where`, taking only the items a mod's
 //! filter wants out of a container (a sorter).
 //!
@@ -141,7 +145,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 29;
+pub(crate) const NATIVE_HOOKS_API: u32 = 30;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -280,6 +284,18 @@ pub(crate) struct NativePlayer {
     pub(crate) pitch: f32,
     /// `minecraft:overworld`, `minecraft:the_nether`, `minecraft:the_end`.
     pub(crate) dimension: &'static str,
+}
+
+/// A mob or a dropped item as `native_entities_in` lists it. API 30.
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct NativeEntity {
+    /// Its network id, for `native_hurt_mob` and `native_take_item_entity`.
+    pub(crate) id: u32,
+    /// The mob's type (`minecraft:zombie`), or `minecraft:item` for a dropped item.
+    pub(crate) kind: String,
+    /// Its feet.
+    pub(crate) position: [f64; 3],
 }
 
 /// A native mod as Options > Mods lists it (`native_mods`).
@@ -1195,6 +1211,73 @@ impl Game<'_> {
         let [_, r, g, b] = rgb.to_be_bytes();
         let color = rgba(r, g, b, 0xFF);
         batch.text_styled(&self.gui.atlas, &Text::literal(text), x, y, color, shadow);
+    }
+    /// The living mobs and the dropped items whose boxes overlap the box
+    /// `min`..`max`, nearest to `from` first. Players are not listed. API 30.
+    pub(super) fn native_entities_in(
+        &self,
+        min: [f64; 3],
+        max: [f64; 3],
+        from: [f64; 3],
+    ) -> Vec<NativeEntity> {
+        let overlaps = |feet: [f64; 3], half: f64, height: f64| {
+            feet[0] + half > min[0]
+                && feet[0] - half < max[0]
+                && feet[1] + height > min[1]
+                && feet[1] < max[1]
+                && feet[2] + half > min[2]
+                && feet[2] - half < max[2]
+        };
+        let mut found: Vec<NativeEntity> = Vec::new();
+        for m in self.mobs.iter().filter(|m| m.alive()) {
+            let feet = [m.position.x, m.position.y, m.position.z];
+            if overlaps(feet, m.kind.width / 2.0, m.kind.height) {
+                found.push(NativeEntity {
+                    id: m.id,
+                    kind: m.kind.id.clone(),
+                    position: feet,
+                });
+            }
+        }
+        for item in &self.dropped {
+            let feet = [item.position.x, item.position.y, item.position.z];
+            if overlaps(feet, 0.125, 0.25) {
+                found.push(NativeEntity {
+                    id: item.id,
+                    kind: "minecraft:item".into(),
+                    position: feet,
+                });
+            }
+        }
+        let distance = |p: [f64; 3]| (0..3).map(|i| (p[i] - from[i]).powi(2)).sum::<f64>();
+        found.sort_by(|a, b| distance(a.position).total_cmp(&distance(b.position)));
+        found
+    }
+    /// Hurts mob `id` by `amount` (generic damage, no attacker) and sets it on
+    /// fire for `fire_ticks` unless it is fire immune. The health it lost, 0
+    /// when the hit did nothing. API 30.
+    pub(super) fn native_hurt_mob(&mut self, id: u32, amount: f32, fire_ticks: i32) -> f32 {
+        let Some(m) = self.mobs.iter_mut().find(|m| m.id == id && m.alive()) else {
+            return 0.0;
+        };
+        if !m.kind.flags.fire_immune {
+            m.fire_ticks = m.fire_ticks.max(fire_ticks);
+        }
+        let before = m.health;
+        let source = horizon_client::mobs::Damage {
+            kind: horizon_client::mobs::DamageKind::Generic,
+            attacker: None,
+            from: None,
+        };
+        if !m.damage(amount, source) {
+            return 0.0;
+        }
+        (before - m.health.max(0.0)).max(0.0)
+    }
+    /// Takes the dropped item `id` out of the world, giving its stack. API 30.
+    pub(super) fn native_take_item_entity(&mut self, id: u32) -> Option<ItemStack> {
+        let at = self.dropped.iter().position(|i| i.id == id)?;
+        Some(self.dropped.remove(at).stack)
     }
     /// The player, in a world.
     pub(super) fn native_player(&self) -> Option<NativePlayer> {

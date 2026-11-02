@@ -150,6 +150,12 @@ API 29 adds `native_extract_item_where(pos, face, max, wanted)`: `native_extract
 `wanted` turns down and takes from the first one it accepts (a sorter that moves only its filters' items). Bundles
 that use it need `"hooks": 29`.
 
+API 30 adds entity access for blocks that act on what stands in front of them. `native_entities_in(min, max, from)` lists
+the living mobs and dropped items whose boxes overlap a box, nearest to `from` first (players are not listed).
+`native_hurt_mob(id, amount, fire_ticks)` hurts a mob with generic damage, sets it on fire, and returns the health it
+lost. `native_take_item_entity(id)` picks a dropped item up. A mod's laser and tractor beam use them. Server-side.
+Bundles that use them need `"hooks": 30`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
