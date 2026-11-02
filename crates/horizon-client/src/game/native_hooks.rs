@@ -1173,6 +1173,23 @@ impl Game<'_> {
         batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
         true
     }
+    /// Stack `stack`'s icon, with its components (a `custom_model_data`
+    /// that picks the model), as `native_item` draws an item's. API 32.
+    pub(super) fn native_item_stack(
+        &self,
+        batch: &mut HudBatch,
+        stack: &ItemStack,
+        at: [f32; 2],
+        size: f32,
+    ) -> bool {
+        if self.res.items().get(&stack.item).is_none() {
+            return false;
+        }
+        let start = batch.vertices.len();
+        self.draw_item_model(batch, stack, at[0], at[1]);
+        batch.scale_since(start, at[0], at[1], size / 16.0, size / 16.0);
+        true
+    }
     /// The open menu's title (the block's name, or the one it was given),
     /// as plain text. API 20.
     pub(super) fn native_screen_title(&self) -> Option<String> {
@@ -1262,6 +1279,20 @@ impl Game<'_> {
         let [_, r, g, b] = rgb.to_be_bytes();
         let color = rgba(r, g, b, 0xFF);
         batch.text_styled(&self.gui.atlas, &Text::literal(text), x, y, color, shadow);
+    }
+    /// `native_text` scaled by `scale` from its top left (Mekanism's
+    /// 0.6-scale screen text). API 32.
+    pub(super) fn native_text_scaled(
+        &self,
+        batch: &mut HudBatch,
+        text: &str,
+        at: [f32; 2],
+        rgb: u32,
+        scale: f32,
+    ) {
+        let start = batch.vertices.len();
+        self.native_text(batch, text, at, rgb, false);
+        batch.scale_since(start, at[0], at[1], scale, scale);
     }
     /// The living mobs and the dropped items whose boxes overlap the box
     /// `min`..`max`, nearest to `from` first. Players are not listed. API 30.

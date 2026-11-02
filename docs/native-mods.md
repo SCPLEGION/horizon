@@ -162,7 +162,10 @@ mod's GUI tabs in their type's colour and gauges in their chemical's. Bundles th
 API 32 adds windows over a mod screen. `native_screen_overlay` draws after the screen's items, labels and the player's
 inventory, for a window that covers slots (a side configuration or upgrade window). `native_screen_covers` says
 which points that window covers: there the slots under it take no presses, do not light up and show no tooltips,
-and a press goes to `native_screen_click` and stops there. Client-side. Bundles that use them need `"hooks": 32`.
+and a press goes to `native_screen_click` and stops there. API 32 also adds two drawing helpers:
+`native_item_stack(batch, stack, at, size)`, which draws a stack's icon using its components (a
+`custom_model_data` that picks the model), and `native_text_scaled(batch, text, at, rgb, scale)`. Client-side.
+Bundles that use them need `"hooks": 32`.
 
 ## What the launcher does
 
