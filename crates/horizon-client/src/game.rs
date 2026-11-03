@@ -14007,7 +14007,12 @@ impl ApplicationHandler for Game<'_> {
         {
             *button = MouseButton::Right;
         }
-        if let WindowEvent::MouseInput { state, button: MouseButton::Left, .. } = &event {
+        if let WindowEvent::MouseInput {
+            state,
+            button: MouseButton::Left,
+            ..
+        } = &event
+        {
             self.left_down = *state == ElementState::Pressed;
         }
         if let WindowEvent::KeyboardInput { event, .. } = &event
@@ -14334,6 +14339,13 @@ impl ApplicationHandler for Game<'_> {
                     let bundle = bundles::takes_bundle_wheel(self.screen)
                         && d != 0.0
                         && self.bundle_scroll(scaled(raw_x), scaled(raw_y));
+                    if self.screen == Screen::Inventory
+                        && d != 0.0
+                        && !bundle
+                        && self.wheel_taken_by_mod(d)
+                    {
+                        return Ok(());
+                    }
                     if self.screen == Screen::Creative && d != 0.0 && !bundle {
                         self.creative_screen.wheel(f64::from(d), &self.pack.names);
                     }

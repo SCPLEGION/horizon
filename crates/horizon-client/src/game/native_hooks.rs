@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
 //! API 39 adds `native_fill_quad`: a four-cornered shape in one colour (a mod's lightning).
 //! API 38 adds `native_slot_rules`: what each slot of a mod screen's menu takes (an energy slot, an output slot).
 //! API 37 adds `native_screen_escape`: a mod screen can take Escape (to close only a window of its own).
@@ -161,7 +162,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 39;
+pub(crate) const NATIVE_HOOKS_API: u32 = 40;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -654,7 +655,11 @@ impl Game<'_> {
     }
     /// What the slots of block `block`'s menu take, on the server: push one
     /// rule per container slot (the missing ones take anything). API 38.
-    pub(super) fn native_slot_rules(&self, block: &str, rules: &mut Vec<horizon_client::lan::menu::SlotRule>) {
+    pub(super) fn native_slot_rules(
+        &self,
+        block: &str,
+        rules: &mut Vec<horizon_client::lan::menu::SlotRule>,
+    ) {
         let _ = (block, rules);
     }
     /// The rules of the mod menu at `pos`, from the mod's screen.
@@ -685,6 +690,27 @@ impl Game<'_> {
         let mut consumed = false;
         self.native_screen_escape(&block, &mut consumed);
         consumed
+    }
+    /// The wheel turned `steps` (positive up) with the cursor at `at` (as in
+    /// `native_screen_click`) on block `block`'s screen: set `taken` when the
+    /// mod scrolled something of its own. API 40.
+    pub(super) fn native_screen_wheel(
+        &mut self,
+        block: &str,
+        at: [f32; 2],
+        steps: f32,
+        taken: &mut bool,
+    ) {
+        let _ = (block, at, steps, taken);
+    }
+    /// The wheel on the open mod screen: whether the mod took it.
+    pub(super) fn wheel_taken_by_mod(&mut self, steps: f32) -> bool {
+        let Some((block, _, at)) = self.native_screen_at() else {
+            return false;
+        };
+        let mut taken = false;
+        self.native_screen_wheel(&block, at, steps, &mut taken);
+        taken
     }
     /// Whether block `block`'s screen shows its `NativeScreen::alt` layout now: set `alt`.
     /// Asked every frame, so keep it a flag read. API 36.
@@ -1222,7 +1248,13 @@ impl Game<'_> {
     /// Any four-cornered shape in GUI pixels in one colour, `argb`, corners in
     /// order round it; `additive` adds the colour to what is behind it
     /// (vanilla's lightning pipeline). API 39.
-    pub(super) fn native_fill_quad(&self, batch: &mut HudBatch, corners: [[f32; 2]; 4], argb: u32, additive: bool) {
+    pub(super) fn native_fill_quad(
+        &self,
+        batch: &mut HudBatch,
+        corners: [[f32; 2]; 4],
+        argb: u32,
+        additive: bool,
+    ) {
         let [a, r, g, b] = argb.to_be_bytes();
         let start = batch.vertices.len();
         batch.fill_quad(&self.gui.atlas, corners, rgba(r, g, b, a));
@@ -1823,11 +1855,13 @@ impl Game<'_> {
     }
     /// The first row of the player's inventory on the open mod screen.
     pub(super) fn native_screen_inventory_y(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| self.layout_of(s).inventory_y)
+        self.shown_native_screen()
+            .map(|s| self.layout_of(s).inventory_y)
     }
     /// The open mod screen's inventory's left column.
     pub(super) fn native_screen_inventory_x(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| self.layout_of(s).inventory_x)
+        self.shown_native_screen()
+            .map(|s| self.layout_of(s).inventory_x)
     }
     /// The open mod screen's width.
     pub(super) fn native_screen_width(&self) -> Option<f32> {
