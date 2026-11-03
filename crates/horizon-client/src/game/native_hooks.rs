@@ -173,6 +173,8 @@ pub struct NativeWorldItem {
     pub light_at: [i32; 3],
     /// The seed vanilla's item model resolver takes.
     pub seed: i32,
+    /// The model's display transform: the GUI one, or the one a dropped item has (`ItemDisplayContext.GROUND`).
+    pub ground: bool,
 }
 
 /// A line of text a mod wants drawn in the world (`submitText`). API 44.
@@ -799,7 +801,11 @@ impl Game<'_> {
             let start = out.len();
             let state = self.resolve_item(
                 &stack,
-                horizon_assets::item_model::DisplayContext::Gui,
+                if i.ground {
+                    horizon_assets::item_model::DisplayContext::Ground
+                } else {
+                    horizon_assets::item_model::DisplayContext::Gui
+                },
                 None,
                 i.seed,
             );
