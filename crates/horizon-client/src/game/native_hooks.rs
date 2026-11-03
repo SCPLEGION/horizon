@@ -1220,10 +1220,15 @@ impl Game<'_> {
         batch.fill(&self.gui.atlas, x, y, w, h, rgba(r, g, b, a));
     }
     /// Any four-cornered shape in GUI pixels in one colour, `argb`, corners in
-    /// order round it. API 39.
-    pub(super) fn native_fill_quad(&self, batch: &mut HudBatch, corners: [[f32; 2]; 4], argb: u32) {
+    /// order round it; `additive` adds the colour to what is behind it
+    /// (vanilla's lightning pipeline). API 39.
+    pub(super) fn native_fill_quad(&self, batch: &mut HudBatch, corners: [[f32; 2]; 4], argb: u32, additive: bool) {
         let [a, r, g, b] = argb.to_be_bytes();
+        let start = batch.vertices.len();
         batch.fill_quad(&self.gui.atlas, corners, rgba(r, g, b, a));
+        if additive {
+            batch.blend_since(start, horizon_client::hud::Blend::Additive);
+        }
     }
     /// Part `src` (`[x, y, w, h]` in the sprite's own pixels) of sprite
     /// `name` (vanilla's `gui/...`, or a content mod's GUI texture

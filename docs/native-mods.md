@@ -197,7 +197,7 @@ API 38 adds `native_slot_rules(block, rules)`, on the server: one `SlotRule` per
 (`Any`, `Refuse` for an output slot, `Items(ids)` for a slot that takes only those items, such as an energy slot).
 Bundles that use it need `"hooks": 38`.
 
-API 39 adds `native_fill_quad(batch, corners, argb)`: a four-cornered shape in one colour (Mekanism's lightning in the
+API 39 adds `native_fill_quad(batch, corners, argb, additive)`: a four-cornered shape in one colour, added to what is behind it when `additive` (Mekanism's lightning in the
 Antiprotonic Nucleosynthesizer's screen). Bundles that use it need `"hooks": 39`.
 
 ## What the launcher does
