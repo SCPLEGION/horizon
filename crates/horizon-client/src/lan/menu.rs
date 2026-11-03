@@ -252,7 +252,9 @@ impl View<'_> {
         }
         match self.rules.get(i) {
             Some(SlotRule::Refuse) => return false,
-            Some(SlotRule::Items(items)) if !items.iter().any(|x| **x == *stack.item) => return false,
+            Some(SlotRule::Items(items)) if !items.iter().any(|x| **x == *stack.item) => {
+                return false;
+            }
             _ => {}
         }
         self.enabled(i)
@@ -895,7 +897,7 @@ mod tests {
                 container: Some(&mut read),
                 shulker: false,
                 hidden: &[],
-            rules: &[],
+                rules: &[],
             };
             click(&mut view, &mut drag, 5 + 27, 0, input::QUICK_MOVE, &rules);
             assert_eq!(view.get(0).map(|s| s.item), Some("minecraft:dirt".into()));
@@ -958,7 +960,7 @@ mod tests {
                 container: Some(&mut container),
                 shulker,
                 hidden: &[],
-            rules: &[],
+                rules: &[],
             };
             // Carried onto an empty slot, shift-clicked from the hotbar
             // (menu slot 27 + 27) and swapped in with the number key 1.

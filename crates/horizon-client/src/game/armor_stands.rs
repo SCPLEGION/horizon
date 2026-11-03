@@ -275,7 +275,10 @@ impl Game<'_> {
                 .get(&asset)
                 .and_then(|k| k.get(kind))
                 .map_or(&[][..], Vec::as_slice);
-            let worn = assets.worn_models.get(&asset).map_or(&[][..], Vec::as_slice);
+            let worn = assets
+                .worn_models
+                .get(&asset)
+                .map_or(&[][..], Vec::as_slice);
             if layers.is_empty() && worn.is_empty() {
                 continue;
             }

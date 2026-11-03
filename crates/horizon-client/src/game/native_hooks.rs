@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 45 adds `native_keep_chunks`: a mod keeps chunks loaded and ticking for as long as it asks (Mekanism's dimensional stabilizer and anchor upgrade).
 //! API 44 adds `native_open_ui` and `native_ui_draw`, `native_ui_click`, `native_ui_key`, `native_ui_wheel`, `native_ui_closed`: a screen of a mod's own, tied to no block (Mekanism's module tweaker and radial selector).
 //! API 43 adds `native_set_block`, `native_block_redirect` and `native_block_removed`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
 //! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
@@ -753,7 +754,9 @@ impl Game<'_> {
             if rel.length_squared() > 128.0 * 128.0 {
                 continue;
             }
-            let light = self.world.light(m.light_at[0], m.light_at[1], m.light_at[2]);
+            let light = self
+                .world
+                .light(m.light_at[0], m.light_at[1], m.light_at[2]);
             let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
             let base = glam::Mat4::from_translation(rel.as_vec3())
                 * glam::Mat4::from_quat(glam::Quat::from_euler(
@@ -891,13 +894,7 @@ impl Game<'_> {
     /// A key (`key.keyboard.*`) went down or up on the mod's screen `id`, with
     /// the text it types (when it types any; a paste gives the clipboard).
     /// Escape closes the screen and is not sent. API 44.
-    pub(super) fn native_ui_key(
-        &mut self,
-        id: &str,
-        key: &str,
-        text: Option<&str>,
-        pressed: bool,
-    ) {
+    pub(super) fn native_ui_key(&mut self, id: &str, key: &str, text: Option<&str>, pressed: bool) {
         let _ = (id, key, text, pressed);
     }
     /// The wheel turned `steps` (positive up) on the mod's screen `id`. API 44.
