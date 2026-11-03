@@ -332,6 +332,13 @@ impl PlayerMotion {
             .damage
             .source::<()>(source, None, None, None)
             .ok_or("unknown resident damage source")?;
+        // A mod's immunity cancels the hit whole (`LivingIncomingDamageEvent.setCanceled`).
+        if self.damage_immune.iter().any(|entry| match entry.strip_prefix('#') {
+            Some(tag) => source.in_tag(tag),
+            None => source.is_type(entry),
+        }) {
+            return Ok(BlockOutcome::default());
+        }
         let armor = self.attribute("minecraft:armor").unwrap_or(0.0) as f32;
         let toughness = self.attribute("minecraft:armor_toughness").unwrap_or(0.0) as f32;
         let before = self.health.health() + self.health.absorption();
