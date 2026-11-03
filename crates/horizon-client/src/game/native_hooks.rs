@@ -6,7 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
-//! API 43 adds `native_block_redirect`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
+//! API 43 adds `native_set_block` and `native_block_redirect`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
 //! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
 //! API 42 adds `NativeScreen::armor` and `offhand`: the player's worn slots on a mod screen (Mekanism's armor sidebar).
 //! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
@@ -1305,6 +1305,34 @@ impl Game<'_> {
         }
         s.properties.insert(key.into(), value.into());
         let Ok(id) = registry.resolve(&s) else {
+            return false;
+        };
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        self.with_level(|b, level, ticks| b.set_block(level, ticks, at, id, flags::UPDATE_ALL))
+    }
+    /// Sets the block at `pos` to `block` with the given properties (every
+    /// other property at its default), as `Level.setBlock` with
+    /// `UPDATE_ALL`: neighbours and clients are told. False when the block
+    /// or a property value does not exist. A block entity at `pos` goes with
+    /// the old block. `block` of `minecraft:air` removes the block. A mod's
+    /// multi-cell machine fills its other cells this way. API 43.
+    pub(super) fn native_set_block(
+        &mut self,
+        pos: [i32; 3],
+        block: &str,
+        properties: &[(&str, &str)],
+    ) -> bool {
+        let registry = self.pack.assets.registry;
+        let Some(mut state) = registry
+            .default_state(block)
+            .and_then(|d| registry.state(d).cloned())
+        else {
+            return false;
+        };
+        for (k, v) in properties {
+            state.properties.insert((*k).into(), (*v).into());
+        }
+        let Ok(id) = registry.resolve(&state) else {
             return false;
         };
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
