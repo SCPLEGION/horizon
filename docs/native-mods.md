@@ -193,6 +193,10 @@ API 37 adds `native_screen_escape(block, consumed)`: Escape on a mod screen firs
 closed a window of its own (Mekanism's machine windows); the screen then stays open. Bundles that use it need
 `"hooks": 37`.
 
+API 38 adds `native_slot_rules(block, rules)`, on the server: one `SlotRule` per container slot of a mod screen's menu
+(`Any`, `Refuse` for an output slot, `Items(ids)` for a slot that takes only those items, such as an energy slot).
+Bundles that use it need `"hooks": 38`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

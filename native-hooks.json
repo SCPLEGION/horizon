@@ -229,6 +229,21 @@
       "name": "client_block_entity_changed",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_client_block_entity_changed"
+    },
+    {
+      "name": "screen_alt",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_alt"
+    },
+    {
+      "name": "screen_escape",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_escape"
+    },
+    {
+      "name": "slot_rules",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_slot_rules"
     }
   ]
 }

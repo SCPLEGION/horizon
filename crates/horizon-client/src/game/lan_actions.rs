@@ -1017,6 +1017,10 @@ impl Game<'_> {
         if !hidden.is_empty() {
             host.hub.hide_menu_slots(conn, hidden);
         }
+        let rules = self.mod_menu_rules(pos);
+        if !rules.is_empty() {
+            host.hub.set_menu_rules(conn, rules);
+        }
         true
     }
 

@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 38 adds `native_slot_rules`: what each slot of a mod screen's menu takes (an energy slot, an output slot).
 //! API 37 adds `native_screen_escape`: a mod screen can take Escape (to close only a window of its own).
 //! API 36 adds `native_screen_alt` and `NativeScreen::alt`: a screen that swaps between two layouts.
 //!
@@ -159,7 +160,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 37;
+pub(crate) const NATIVE_HOOKS_API: u32 = 38;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -650,13 +651,33 @@ impl Game<'_> {
     pub(super) fn native_screen(&self, block: &str, screen: &mut Option<NativeScreen>) {
         let _ = (block, screen);
     }
+    /// What the slots of block `block`'s menu take, on the server: push one
+    /// rule per container slot (the missing ones take anything). API 38.
+    pub(super) fn native_slot_rules(&self, block: &str, rules: &mut Vec<horizon_client::lan::menu::SlotRule>) {
+        let _ = (block, rules);
+    }
+    /// The rules of the mod menu at `pos`, from the mod's screen.
+    pub(super) fn mod_menu_rules(&self, pos: Pos) -> Vec<horizon_client::lan::menu::SlotRule> {
+        if self.mod_menu_at(pos).is_none() {
+            return Vec::new();
+        }
+        let block = self
+            .res
+            .facts()
+            .get(self.world.block(pos.0, pos.1, pos.2))
+            .name
+            .to_string();
+        let mut rules = Vec::new();
+        self.native_slot_rules(&block, &mut rules);
+        rules
+    }
     /// Escape was pressed on block `block`'s screen: set `consumed` when the mod
     /// used it (closed a window of its own), and the screen stays open. API 37.
     pub(super) fn native_screen_escape(&mut self, block: &str, consumed: &mut bool) {
         let _ = (block, consumed);
     }
     /// Escape on the open mod screen: whether the mod took it.
-    pub(super) fn native_escape_taken(&mut self) -> bool {
+    pub(super) fn escape_taken_by_mod(&mut self) -> bool {
         let Some(block) = self.shown_native_screen().map(|s| s.block.clone()) else {
             return false;
         };
