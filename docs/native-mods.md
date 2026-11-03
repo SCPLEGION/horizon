@@ -184,6 +184,11 @@ API 35 adds `native_mouse_down()`: whether the left mouse button is down. `nativ
 that lets the player drag a window of its own (as Mekanism's GUI windows move) follows `native_cursor()` while it holds.
 Bundles that use it need `"hooks": 35`.
 
+API 36 adds a second layout for a mod screen. `NativeScreen::alt` holds another `NativeScreen` (another size, slots and
+inventory position), and `native_screen_alt(block, alt)`, asked every frame, says whether it shows now: Mekanism's
+frequency selector is a screen of its own size that its machines' screens swap to. Bundles that use it need
+`"hooks": 36`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
