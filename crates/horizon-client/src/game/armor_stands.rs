@@ -42,8 +42,9 @@ pub(super) struct ArmorStandAssets {
     /// asset id -> layer kind (humanoid / humanoid_leggings) -> each layer's (texture, undyed colour), in order.
     pub equipment: HashMap<String, HashMap<String, Vec<(String, Option<u32>)>>>,
     /// asset id -> the models a content mod's equipment asset draws on the wearer
-    /// (`layers.horizon_models`), each with its sprite.
-    pub worn_models: HashMap<String, Vec<(Part, String)>>,
+    /// (`layers.horizon_models`), each with its sprite and the item ids that hide it when worn too
+    /// (`hide_with`: MekaSuit parts that show only while the neighbouring piece is absent).
+    pub worn_models: HashMap<String, Vec<(Part, String, Vec<String>)>>,
     /// `<ns>:<name>` -> the model a content mod draws in the world by itself
     /// (`assets/<ns>/horizon/world_models/<name>.json`, a part tree in pixels,
     /// drawn as it stands) with its sprite (`textures/entity/equipment/horizon_models/<name>`).
@@ -154,7 +155,7 @@ impl ArmorStandAssets {
                 // `layers.horizon_models`: [{"model": "<ns>:<name>", "texture": "<ns>:<name>"}], a model in
                 // `assets/<ns>/horizon/worn_models/<name>.json` (an entity-model part tree posed on the
                 // wearer's parts by name) and a texture in `textures/entity/equipment/horizon_models/`.
-                let models: Vec<(Part, String)> = v["layers"]["horizon_models"]
+                let models: Vec<(Part, String, Vec<String>)> = v["layers"]["horizon_models"]
                     .as_array()
                     .into_iter()
                     .flatten()
@@ -167,9 +168,16 @@ impl ArmorStandAssets {
                         let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
                         let tex = layer["texture"].as_str()?;
                         let (tns, tname) = tex.split_once(':').unwrap_or((namespace.as_str(), tex));
+                        let hide_with = layer["hide_with"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|id| id.as_str().map(str::to_owned))
+                            .collect();
                         Some((
                             Part::from_json("horizon_worn", &json),
                             format!("{tns}:entity/equipment/horizon_models/{tname}"),
+                            hide_with,
                         ))
                     })
                     .collect();
@@ -250,6 +258,7 @@ impl Game<'_> {
     ) -> Vec<(&Part, [f32; 4], u32, u32)> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
+        let items_worn: Vec<&str> = worn.iter().flatten().map(|(item, _)| *item).collect();
         for (item, layer) in worn
             .into_iter()
             .zip(["helmet", "chestplate", "leggings", "boots"])
@@ -311,7 +320,12 @@ impl Game<'_> {
                 ));
             }
             // A content mod's own models on the wearer's parts (free runners, a jetpack).
-            for (model, texture) in worn {
+            for (model, texture, hide_with) in worn {
+                if hide_with.iter().any(|id| {
+                    items_worn.contains(&id.as_str())
+                }) {
+                    continue;
+                }
                 if let Some(r) = self.gui.atlas.sprites.get(texture.as_str()) {
                     out.push((model, [r.u0, r.v0, r.u1, r.v1], 0xFFFF_FFFF, overlay));
                 }
