@@ -186,6 +186,12 @@ pub struct NativeWorldModel {
     pub pitch: f32,
     pub roll: f32,
     pub light_at: [i32; 3],
+    /// ARGB the model's texture is multiplied by (a tint, a fade); `0xFFFF_FFFF` for none.
+    pub color: u32,
+    /// A rotation (x, y, z, w of a unit quaternion) used in place of `yaw`, `pitch` and `roll`.
+    pub rotation: Option<[f32; 4]>,
+    /// Drawn at full brightness whatever the light at `light_at`.
+    pub full_bright: bool,
 }
 
 /// The hook points' API version. The launcher reads this line from the
@@ -756,21 +762,30 @@ impl Game<'_> {
                 continue;
             }
             let light = self.world.light(m.light_at[0], m.light_at[1], m.light_at[2]);
-            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
-            let base = glam::Mat4::from_translation(rel.as_vec3())
-                * glam::Mat4::from_quat(glam::Quat::from_euler(
+            let packed = if m.full_bright {
+                240 | 240 << 8
+            } else {
+                (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8)
+            };
+            let [a, r, g, b] = m.color.to_be_bytes();
+            let color = u32::from(a) << 24 | u32::from(b) << 16 | u32::from(g) << 8 | u32::from(r);
+            let turn = match m.rotation {
+                Some([x, y, z, w]) => glam::Quat::from_xyzw(x, y, z, w).normalize(),
+                None => glam::Quat::from_euler(
                     glam::EulerRot::YXZ,
                     m.yaw.to_radians(),
                     m.pitch.to_radians(),
                     m.roll.to_radians(),
-                ));
+                ),
+            };
+            let base = glam::Mat4::from_translation(rel.as_vec3()) * glam::Mat4::from_quat(turn);
             let poses = horizon_client::mobs::anim::Poses::new(part);
             horizon_client::mobs::render::draw(
                 part,
                 base,
                 &poses,
                 [r.u0, r.v0, r.u1, r.v1],
-                0xFFFF_FFFF,
+                color,
                 packed,
                 0,
                 out,
