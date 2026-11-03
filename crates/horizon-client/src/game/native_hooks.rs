@@ -6,6 +6,8 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 50 adds a mod item's continuous use (`native_using_tick`, `native_start_using`) and `native_clip`/`native_eye`: a ray through the world's blocks and the eyes of the player (Mekanism's Flamethrower).
+//!
 //! API 49 adds `native_gui_model`: a mod's world model drawn turning in a GUI (Mekanism's Robit skin previews).
 //! API 46 adds `native_mob_types` (mob types of a mod's own, networked as a vanilla base), `native_mobs_tick`, `native_mob_died`, `native_use_mob`, `native_mob_ids`, `native_with_mob` and `Extra::mod_data`, saved with the mob (Mekanism's Robit).
 //! API 45 adds `native_keep_chunks`: a mod keeps chunks loaded and ticking for as long as it asks (Mekanism's dimensional stabilizer and anchor upgrade).
@@ -249,7 +251,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 49;
+pub(crate) const NATIVE_HOOKS_API: u32 = 50;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1376,6 +1378,18 @@ impl Game<'_> {
     pub(super) fn native_use_item(&mut self, stack: &ItemStack, claimed: &mut bool) {
         let _ = (stack, claimed);
     }
+    /// Every tick of a use that `native_start_using` began, for the item in use (`Item.onUseTick`): set
+    /// `claimed` to own the use, and `keep` to go on with it next tick (left false, the use ends, as
+    /// `releaseUsingItem`). Server-side, for every player of the world. API 50.
+    pub(super) fn native_using_tick(
+        &mut self,
+        stack: &ItemStack,
+        ticks: u32,
+        claimed: &mut bool,
+        keep: &mut bool,
+    ) {
+        let _ = (stack, ticks, claimed, keep);
+    }
     /// A player breaks the block `state` at `pos`, once the game allowed it
     /// (the held item can break blocks, the debug stick didn't take the
     /// click): where `ServerPlayerGameMode.destroyBlock` starts. Set
@@ -1869,6 +1883,35 @@ impl Game<'_> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);
         facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
+    }
+    /// Starts using the held item (`startUsingItem`): `native_using_tick` follows while the use key is
+    /// held. Call it from `native_use_item`, which should claim the click. API 50.
+    #[allow(dead_code)]
+    pub(super) fn native_start_using(&mut self) {
+        if self.using.is_none() {
+            self.using = Some((self.held_slot(), 0));
+        }
+    }
+    /// The first block hit along the segment `from`..`to`: the point, the block and the face's normal.
+    /// API 50.
+    #[allow(dead_code)]
+    pub(super) fn native_clip(
+        &self,
+        from: [f64; 3],
+        to: [f64; 3],
+    ) -> Option<([f64; 3], [i32; 3], [i32; 3])> {
+        let d = [to[0] - from[0], to[1] - from[1], to[2] - from[2]];
+        let length = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+        if length < 1e-9 {
+            return None;
+        }
+        let hit = self.clip_ray(from, d.map(|v| v / length), length)?;
+        Some((hit.point, hit.pos, hit.face))
+    }
+    /// The eyes of the player, in a world. API 50.
+    #[allow(dead_code)]
+    pub(super) fn native_eye(&self) -> Option<[f64; 3]> {
+        self.eye_position()
     }
     /// The block id of the mod screen showing now, if any. API 48.
     #[allow(dead_code)]

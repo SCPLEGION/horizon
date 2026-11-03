@@ -5531,6 +5531,13 @@ impl Game<'_> {
         }
         // ServerPlayer.updateUsingItem: USING_ITEM every tick of the use.
         self.trigger_using_item(&stack);
+        // A native mod's item: its use goes on while it keeps it.
+        let (mut claimed, mut keep) = (false, false);
+        self.native_using_tick(&stack, ticks, &mut claimed, &mut keep);
+        if claimed {
+            self.using = keep.then_some((slot, ticks + 1));
+            return;
+        }
         let Some(info) = self.items().get(&stack.item).cloned() else {
             self.using = None;
             return;

@@ -186,6 +186,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_use_item"
     },
     {
+      "name": "using_tick",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_using_tick"
+    },
+    {
       "name": "destroy_block",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_destroy_block"
