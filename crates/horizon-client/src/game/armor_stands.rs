@@ -42,8 +42,13 @@ pub(super) struct ArmorStandAssets {
     /// asset id -> layer kind (humanoid / humanoid_leggings) -> each layer's (texture, undyed colour), in order.
     pub equipment: HashMap<String, HashMap<String, Vec<(String, Option<u32>)>>>,
     /// asset id -> the models a content mod's equipment asset draws on the wearer
-    /// (`layers.horizon_models`), each with its sprite.
-    pub worn_models: HashMap<String, Vec<(Part, String)>>,
+    /// (`layers.horizon_models`), each with its sprite and the item ids that hide it when worn too
+    /// (`hide_with`: MekaSuit parts that show only while the neighbouring piece is absent).
+    pub worn_models: HashMap<String, Vec<(Part, String, Vec<String>)>>,
+    /// `<ns>:<name>` -> the model a content mod draws in the world by itself
+    /// (`assets/<ns>/horizon/world_models/<name>.json`, a part tree in pixels,
+    /// drawn as it stands) with its sprite (`textures/entity/equipment/horizon_models/<name>`).
+    pub world_models: HashMap<String, (Part, String)>,
     /// asset id -> `trim_overrides`.
     pub trim_overrides: HashMap<String, Vec<TrimOverride>>,
     pub trims: TrimRegistry,
@@ -79,10 +84,33 @@ impl ArmorStandAssets {
         let mut equipment = HashMap::new();
         let mut trim_overrides = HashMap::new();
         let mut worn_models = HashMap::new();
+        let mut world_models = HashMap::new();
         // EquipmentAssetManager reads every namespace: vanilla's and the content mods'.
         let namespaces = std::iter::once("minecraft".to_owned())
             .chain(horizon_client::mod_content::namespaces(root));
         for namespace in namespaces {
+            if let Ok(entries) =
+                std::fs::read_dir(root.join(format!("assets/{namespace}/horizon/world_models")))
+            {
+                for e in entries.flatten() {
+                    let path = e.path();
+                    let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if let Some(json) = std::fs::read(&path)
+                        .ok()
+                        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                    {
+                        world_models.insert(
+                            format!("{namespace}:{name}"),
+                            (
+                                Part::from_json("horizon_world", &json),
+                                format!("{namespace}:entity/equipment/horizon_models/{name}"),
+                            ),
+                        );
+                    }
+                }
+            }
             let Ok(entries) = std::fs::read_dir(root.join(format!("assets/{namespace}/equipment")))
             else {
                 continue;
@@ -127,7 +155,7 @@ impl ArmorStandAssets {
                 // `layers.horizon_models`: [{"model": "<ns>:<name>", "texture": "<ns>:<name>"}], a model in
                 // `assets/<ns>/horizon/worn_models/<name>.json` (an entity-model part tree posed on the
                 // wearer's parts by name) and a texture in `textures/entity/equipment/horizon_models/`.
-                let models: Vec<(Part, String)> = v["layers"]["horizon_models"]
+                let models: Vec<(Part, String, Vec<String>)> = v["layers"]["horizon_models"]
                     .as_array()
                     .into_iter()
                     .flatten()
@@ -140,9 +168,16 @@ impl ArmorStandAssets {
                         let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
                         let tex = layer["texture"].as_str()?;
                         let (tns, tname) = tex.split_once(':').unwrap_or((namespace.as_str(), tex));
+                        let hide_with = layer["hide_with"]
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|id| id.as_str().map(str::to_owned))
+                            .collect();
                         Some((
                             Part::from_json("horizon_worn", &json),
                             format!("{tns}:entity/equipment/horizon_models/{tname}"),
+                            hide_with,
                         ))
                     })
                     .collect();
@@ -160,6 +195,7 @@ impl ArmorStandAssets {
             player,
             equipment,
             worn_models,
+            world_models,
             trim_overrides,
             trims: TrimRegistry::load(root),
             root: root.to_owned(),
@@ -222,6 +258,7 @@ impl Game<'_> {
     ) -> Vec<(&Part, [f32; 4], u32, u32)> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
+        let items_worn: Vec<&str> = worn.iter().flatten().map(|(item, _)| *item).collect();
         for (item, layer) in worn
             .into_iter()
             .zip(["helmet", "chestplate", "leggings", "boots"])
@@ -247,7 +284,10 @@ impl Game<'_> {
                 .get(&asset)
                 .and_then(|k| k.get(kind))
                 .map_or(&[][..], Vec::as_slice);
-            let worn = assets.worn_models.get(&asset).map_or(&[][..], Vec::as_slice);
+            let worn = assets
+                .worn_models
+                .get(&asset)
+                .map_or(&[][..], Vec::as_slice);
             if layers.is_empty() && worn.is_empty() {
                 continue;
             }
@@ -283,7 +323,10 @@ impl Game<'_> {
                 ));
             }
             // A content mod's own models on the wearer's parts (free runners, a jetpack).
-            for (model, texture) in worn {
+            for (model, texture, hide_with) in worn {
+                if hide_with.iter().any(|id| items_worn.contains(&id.as_str())) {
+                    continue;
+                }
                 if let Some(r) = self.gui.atlas.sprites.get(texture.as_str()) {
                     out.push((model, [r.u0, r.v0, r.u1, r.v1], 0xFFFF_FFFF, overlay));
                 }

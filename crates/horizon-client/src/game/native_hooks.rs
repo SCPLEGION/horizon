@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 43 adds `native_set_block`, `native_block_redirect` and `native_block_removed`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
 //! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
 //! API 42 adds `NativeScreen::armor` and `offhand`: the player's worn slots on a mod screen (Mekanism's armor sidebar).
 //! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
@@ -161,6 +162,32 @@ use horizon_world::{
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
+/// An item a mod wants drawn in the world, in its GUI form (a bin's contents). API 44.
+#[derive(Clone, Debug)]
+pub struct NativeWorldItem {
+    /// The item id (`minecraft:diamond`).
+    pub item: String,
+    /// Item space (one unit across, as the GUI draws it) to the world, column major.
+    pub matrix: [f64; 16],
+    /// The block whose light lights it.
+    pub light_at: [i32; 3],
+    /// The seed vanilla's item model resolver takes.
+    pub seed: i32,
+}
+
+/// A line of text a mod wants drawn in the world (`submitText`). API 44.
+#[derive(Clone, Debug)]
+pub struct NativeWorldText {
+    pub text: String,
+    /// Text space (one unit a font pixel, y down) to the world, column major.
+    pub matrix: [f64; 16],
+    pub x: f32,
+    pub y: f32,
+    /// ARGB.
+    pub color: u32,
+    pub light_at: [i32; 3],
+}
+
 /// A translucent box a mod has drawn in the world (`native_world_boxes`): its corners in world
 /// coordinates and the ARGB colour of each face (east, west, up, down, south, north).
 #[derive(Clone, Debug)]
@@ -168,12 +195,35 @@ pub struct NativeWorldBox {
     pub min: [f64; 3],
     pub max: [f64; 3],
     pub colors: [u32; 6],
+    /// A sprite of the GUI atlas (`block/water_still`, a content mod's `<ns>:gui/...`) laid over every face, one
+    /// tile per block as `RenderResizableCuboid` does a fluid; none for the plain colour. API 43.
+    pub sprite: Option<String>,
+}
+
+/// A model a mod draws in the world (`native_world_models`): `model` is `<ns>:<name>` of a part tree in
+/// `assets/<ns>/horizon/world_models/<name>.json` (pixels, y up, as it stands) with its texture in
+/// `textures/entity/equipment/horizon_models/<name>.png`. It is placed at `position` (world), turned by `yaw`
+/// about y, then `pitch` about x, then `roll` about its own z (degrees), and lit as the block `light_at`.
+#[derive(Clone, Debug)]
+pub struct NativeWorldModel {
+    pub model: String,
+    pub position: [f64; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+    pub roll: f32,
+    pub light_at: [i32; 3],
+    /// ARGB the model's texture is multiplied by (a tint, a fade); `0xFFFF_FFFF` for none.
+    pub color: u32,
+    /// A rotation (x, y, z, w of a unit quaternion) used in place of `yaw`, `pitch` and `roll`.
+    pub rotation: Option<[f32; 4]>,
+    /// Drawn at full brightness whatever the light at `light_at`.
+    pub full_bright: bool,
 }
 
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 42;
+pub(crate) const NATIVE_HOOKS_API: u32 = 44;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -713,6 +763,136 @@ impl Game<'_> {
     pub(super) fn native_world_boxes(&self, boxes: &mut Vec<NativeWorldBox>) {
         let _ = boxes;
     }
+    /// Models a mod wants drawn in the world this frame: push a [`NativeWorldModel`] for each (a wind
+    /// generator's spinning rotor). API 43.
+    pub(super) fn native_world_models(&self, models: &mut Vec<NativeWorldModel>) {
+        let _ = models;
+    }
+    /// Items a mod wants drawn in the world this frame: push a [`NativeWorldItem`] for each. API 44.
+    pub(super) fn native_world_items(&self, items: &mut Vec<NativeWorldItem>) {
+        let _ = items;
+    }
+    /// Text a mod wants drawn in the world this frame: push a [`NativeWorldText`] for each. API 44.
+    pub(super) fn native_world_texts(&self, texts: &mut Vec<NativeWorldText>) {
+        let _ = texts;
+    }
+    /// The vertices of the mods' world items and texts, camera relative, appended to the entity quads.
+    pub(super) fn world_item_geometry(
+        &self,
+        camera: glam::DVec3,
+        out: &mut Vec<horizon_client::mesher::Vertex>,
+    ) {
+        let to_camera = |m: &[f64; 16]| {
+            (glam::DMat4::from_translation(-camera) * glam::DMat4::from_cols_array(m)).as_mat4()
+        };
+        let mut items = Vec::new();
+        self.native_world_items(&mut items);
+        for i in &items {
+            let rel = to_camera(&i.matrix);
+            if rel.w_axis.truncate().length_squared() > 64.0 * 64.0 {
+                continue;
+            }
+            let stack = ItemStack::new(&i.item, 1);
+            if self.res.items().get(&i.item).is_none() {
+                continue;
+            }
+            let start = out.len();
+            let state = self.resolve_item(
+                &stack,
+                horizon_assets::item_model::DisplayContext::Gui,
+                None,
+                i.seed,
+            );
+            let light = self
+                .world
+                .light(i.light_at[0], i.light_at[1], i.light_at[2]);
+            self.submit_item_world(
+                &state,
+                rel,
+                horizon_client::block_entity_render::vertex_light(light),
+                out,
+            );
+            self.cull_entity_vertices(out, start);
+        }
+        let mut texts = Vec::new();
+        self.native_world_texts(&mut texts);
+        for t in &texts {
+            let rel = to_camera(&t.matrix);
+            if rel.w_axis.truncate().length_squared() > 64.0 * 64.0 {
+                continue;
+            }
+            let light = self
+                .world
+                .light(t.light_at[0], t.light_at[1], t.light_at[2]);
+            let call = horizon_client::block_entity_render::TextCall {
+                matrix: rel,
+                x: t.x,
+                y: t.y,
+                text: t.text.clone(),
+                color: t.color,
+                outline: 0,
+                light: horizon_client::block_entity_render::vertex_light(light),
+            };
+            horizon_client::block_entity_render::draw_text(
+                &|c| self.gui.atlas.glyph_cell(c),
+                &call,
+                out,
+            );
+        }
+    }
+    /// The vertices of the mods' world models, camera relative, appended to the entity quads.
+    pub(super) fn world_model_geometry(
+        &self,
+        camera: glam::DVec3,
+        out: &mut Vec<horizon_client::mesher::Vertex>,
+    ) {
+        let mut models = Vec::new();
+        self.native_world_models(&mut models);
+        for m in &models {
+            let Some((part, sprite)) = self.armor_stand_assets.world_models.get(&m.model) else {
+                continue;
+            };
+            let Some(r) = self.gui.atlas.sprites.get(sprite.as_str()) else {
+                continue;
+            };
+            let rel = glam::DVec3::from_array(m.position) - camera;
+            if rel.length_squared() > 128.0 * 128.0 {
+                continue;
+            }
+            let light = self
+                .world
+                .light(m.light_at[0], m.light_at[1], m.light_at[2]);
+            let packed = if m.full_bright {
+                240 | 240 << 8
+            } else {
+                (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8)
+            };
+            let [ca, cr, cg, cb] = m.color.to_be_bytes();
+            let color =
+                u32::from(ca) << 24 | u32::from(cb) << 16 | u32::from(cg) << 8 | u32::from(cr);
+            let turn = match m.rotation {
+                Some([x, y, z, w]) => glam::Quat::from_xyzw(x, y, z, w).normalize(),
+                None => glam::Quat::from_euler(
+                    glam::EulerRot::YXZ,
+                    m.yaw.to_radians(),
+                    m.pitch.to_radians(),
+                    m.roll.to_radians(),
+                ),
+            };
+            let base = glam::Mat4::from_translation(rel.as_vec3()) * glam::Mat4::from_quat(turn);
+            let poses = horizon_client::mobs::anim::Poses::new(part);
+            horizon_client::mobs::render::draw(
+                part,
+                base,
+                &poses,
+                [r.u0, r.v0, r.u1, r.v1],
+                color,
+                packed,
+                0,
+                out,
+            );
+        }
+    }
     /// The vertices of the mods' world boxes, camera relative, appended to the entity quads.
     pub(super) fn world_box_geometry(
         &self,
@@ -727,6 +907,14 @@ impl Game<'_> {
         let white = self.gui.atlas.font.white();
         let uv = horizon_client::gfx::lightning::white_uv(&white);
         for b in &boxes {
+            if let Some(rect) = b
+                .sprite
+                .as_deref()
+                .and_then(|name| self.gui.atlas.sprites.get(name))
+            {
+                sprite_box(b, [rect.u0, rect.v0, rect.u1, rect.v1], camera, out);
+                continue;
+            }
             let lo: [f32; 3] = std::array::from_fn(|i| (b.min[i] - camera[i]) as f32);
             let hi: [f32; 3] = std::array::from_fn(|i| (b.max[i] - camera[i]) as f32);
             let at = |x: bool, y: bool, z: bool| {
@@ -1073,6 +1261,35 @@ impl Game<'_> {
     ) {
         let _ = (stack, pos, state);
     }
+    /// The block at `pos` stopped being `old` (name and properties as it
+    /// was) and is `new` (a name) now, whatever did it: a player, an
+    /// explosion, a piston, a command, a fluid. Called once the change and
+    /// its updates are done, so the hook may set blocks. A mod's multi-cell
+    /// machine clears its other cells here. Server-side. API 43.
+    pub(super) fn native_block_removed(
+        &mut self,
+        pos: [i32; 3],
+        old: &str,
+        old_properties: &std::collections::BTreeMap<String, String>,
+        new: &str,
+    ) {
+        let _ = (pos, old, old_properties, new);
+    }
+    /// A player right clicks or breaks the block `state` at `pos`: set `to`
+    /// to another position and the click or break acts there instead (the
+    /// block, its use, its drops and its break all belong to that position).
+    /// A mod's multi-cell machine answers for its filler blocks with the
+    /// position of the block that owns them (Mekanism's bounding blocks).
+    /// Called before `native_right_click_block` and `native_destroy_block`,
+    /// server-side, for every player of the world. API 43.
+    pub(super) fn native_block_redirect(
+        &self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        to: &mut Option<[i32; 3]>,
+    ) {
+        let _ = (pos, state, to);
+    }
     /// A player right clicks the block at `pos` with `self.hand`, `face` the
     /// face clicked: where `ServerPlayerGameMode.useItemOn` starts, before
     /// the block's own use (a chest, a door, a lever) and before
@@ -1294,6 +1511,34 @@ impl Game<'_> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| b.set_block(level, ticks, at, id, flags::UPDATE_ALL))
     }
+    /// Sets the block at `pos` to `block` with the given properties (every
+    /// other property at its default), as `Level.setBlock` with
+    /// `UPDATE_ALL`: neighbours and clients are told. False when the block
+    /// or a property value does not exist. A block entity at `pos` goes with
+    /// the old block. `block` of `minecraft:air` removes the block. A mod's
+    /// multi-cell machine fills its other cells this way. API 43.
+    pub(super) fn native_set_block(
+        &mut self,
+        pos: [i32; 3],
+        block: &str,
+        properties: &[(&str, &str)],
+    ) -> bool {
+        let registry = self.pack.assets.registry;
+        let Some(mut state) = registry
+            .default_state(block)
+            .and_then(|d| registry.state(d).cloned())
+        else {
+            return false;
+        };
+        for (k, v) in properties {
+            state.properties.insert((*k).into(), (*v).into());
+        }
+        let Ok(id) = registry.resolve(&state) else {
+            return false;
+        };
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        self.with_level(|b, level, ticks| b.set_block(level, ticks, at, id, flags::UPDATE_ALL))
+    }
     /// Runs `change` on the mod block entity at `pos` (a generator charging
     /// the machine beside it) and returns what it returns; none for any
     /// other block entity, and for the one ticking now, which is out of the
@@ -1476,6 +1721,13 @@ impl Game<'_> {
             .properties
             .get(key)
             .cloned()
+    }
+    /// Whether the side `face` of the block at `pos` is full and sturdy
+    /// (`canOcclude` and `isFaceSturdy(.., FULL)`, a bin's cover test). API 44.
+    pub(super) fn native_face_sturdy(&self, pos: [i32; 3], face: Direction) -> bool {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let facts = self.res.facts().get(state);
+        facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
     }
     /// Puts `stack` into the container at `pos` (a chest, a furnace, a mod
     /// container) through its side `face`, as a hopper would, and returns
@@ -2530,5 +2782,69 @@ mod tests {
         assert!(debug_takes(Corner::BottomLeft, true, [true, false]));
         assert!(!debug_takes(Corner::BottomRight, true, [true, false]));
         assert!(debug_takes(Corner::BottomRight, true, [false, true]));
+    }
+}
+
+/// A [`NativeWorldBox`] with a sprite: each face in tiles of one block, the tile's part of the sprite on it.
+fn sprite_box(
+    b: &NativeWorldBox,
+    rect: [f32; 4],
+    camera: glam::DVec3,
+    out: &mut Vec<horizon_client::mesher::Vertex>,
+) {
+    // Per face (east, west, up, down, south, north): the fixed axis and which end of it, the axes the sprite's
+    // u and v run along, and whether v runs against the axis (the sprite's top is the face's top).
+    const FACES: [(usize, bool, usize, usize, bool); 6] = [
+        (0, true, 2, 1, true),
+        (0, false, 2, 1, true),
+        (1, true, 0, 2, false),
+        (1, false, 0, 2, false),
+        (2, true, 0, 1, true),
+        (2, false, 0, 1, true),
+    ];
+    for (face, (axis, high, ua, va, flip_v)) in FACES.into_iter().enumerate() {
+        let [a, r, g, bl] = b.colors[face].to_be_bytes();
+        let color = u32::from(a) << 24 | u32::from(bl) << 16 | u32::from(g) << 8 | u32::from(r);
+        let fixed = if high { b.max[axis] } else { b.min[axis] };
+        let (mut u, u_end) = (b.min[ua], b.max[ua]);
+        while u < u_end - 1e-9 {
+            let u1 = (u.floor() + 1.0).min(u_end);
+            let mut v = b.min[va];
+            while v < b.max[va] - 1e-9 {
+                let v1 = (v.floor() + 1.0).min(b.max[va]);
+                let (ou, ov) = (u.floor(), v.floor());
+                // The four corners: (u, v), (u, v1), (u1, v1), (u1, v), as seen from outside.
+                let mut corners = [(u, v), (u, v1), (u1, v1), (u1, v)];
+                if high != (axis != 1) {
+                    corners.reverse();
+                }
+                for (cu, cv) in corners {
+                    let mut p = [0.0; 3];
+                    p[axis] = fixed;
+                    p[ua] = cu;
+                    p[va] = cv;
+                    let tu = (cu - ou) as f32;
+                    let tv = if flip_v {
+                        1.0 - (cv - ov) as f32
+                    } else {
+                        (cv - ov) as f32
+                    };
+                    out.push(horizon_client::mesher::Vertex {
+                        pos: std::array::from_fn(|i| (p[i] - camera[i]) as f32),
+                        uv: [
+                            rect[0] + (rect[2] - rect[0]) * tu,
+                            rect[1] + (rect[3] - rect[1]) * tv,
+                        ],
+                        layer: horizon_client::gfx::TRANSLUCENT_ITEM_OVERLAY,
+                        color,
+                        light: 240 | 240 << 8,
+                        normal: [0; 4],
+                        glint_uv: [0.0, 0.0],
+                    });
+                }
+                v = v1;
+            }
+            u = u1;
+        }
     }
 }
