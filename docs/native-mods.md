@@ -209,7 +209,9 @@ and the game draws each as a translucent box, full bright and seen from both sid
 
 API 43 adds `native_block_redirect(pos, state, to)`: before a right click or a break, a mod sets `to` and the click or break acts on that
 position instead (Mekanism's bounding blocks send a click on a filler cell to the machine that owns it). API 43 also adds `native_set_block(pos, block, properties)`: sets a block (`Level.setBlock` with `UPDATE_ALL`; `minecraft:air` removes), which a multi-cell
-machine uses to fill and clear its other cells. Bundles that use either need `"hooks": 43`.
+machine uses to fill and clear its other cells. API 43 also adds `native_block_removed(pos, old, old_properties, new)`: after any change of a block into another (a player, an explosion, a piston,
+a command), with the block it was; unlike `native_block_changed` it runs once the change is done, so the mod may set blocks (a machine clearing
+its other cells). Bundles that use any of these need `"hooks": 43`.
 
 API 42 adds `NativeScreen { armor, offhand }`: where the screen shows the player's four armor slots (head first, 18 px apart down) and the off hand slot
 (`addArmorSlots`). They are the player's own worn slots; clicks go to the inventory menu (window 0) of a Horizon server. Bundles that use it need `"hooks": 42`.

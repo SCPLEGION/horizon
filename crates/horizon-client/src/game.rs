@@ -783,6 +783,9 @@ struct GameLevel<'w> {
     client_side: bool,
     /// Only the integrated or dedicated server dispatches native observations.
     native_authoritative: bool,
+    /// Blocks that stopped being what they were while the level ran, for
+    /// `native_block_removed` once it is done (API 43).
+    native_removed: &'w std::cell::RefCell<Vec<(BlockPos, BlockStateId, BlockStateId)>>,
     native_particles: &'w mut Vec<(
         &'static str,
         horizon_client::particles::ParticleOptions,
@@ -985,6 +988,9 @@ impl GameLevel<'_> {
 impl LevelAccess for GameLevel<'_> {
     fn observe_block_changed(&self, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
         if self.native_authoritative {
+            if self.facts.get(old).name != self.facts.get(new).name {
+                self.native_removed.borrow_mut().push((pos, old, new));
+            }
             self.native_block_changed(self.dimension, pos, old, new);
         }
     }
@@ -2110,6 +2116,8 @@ struct Game<'a> {
     /// Item entities spawned and block entities removed while the block
     /// behaviour ran (spilled contents, popped resources).
     spill: spill::Spill,
+    /// See `GameLevel::native_removed`.
+    native_removed: std::cell::RefCell<Vec<(BlockPos, BlockStateId, BlockStateId)>>,
     /// The recipe book of the open screen (game/recipe_book.rs).
     recipe_ui: recipe_book::RecipeUi,
     /// The horse inventory (game/mount_menu.rs).
@@ -3374,14 +3382,34 @@ impl Game<'_> {
             lid_openers: &self.lid_openers,
             client_side: self.remote.is_some(),
             native_authoritative: self.serving.is_some() || self.options.dedicated.is_some(),
+            native_removed: &self.native_removed,
             native_particles: &mut self.creatures.lan_particles,
         };
         let result = f(self.res.behaviours(), &mut level, &mut self.block_ticks);
         self.flush_spill();
+        self.flush_native_removed();
         if self.lan.is_some() {
             self.flush_lan_particles();
         }
         result
+    }
+    /// `native_block_removed` for each block that changed into another while
+    /// the level ran (the hook may set blocks, which can queue more).
+    fn flush_native_removed(&mut self) {
+        loop {
+            let removed = std::mem::take(&mut *self.native_removed.borrow_mut());
+            if removed.is_empty() {
+                return;
+            }
+            for (pos, old, new) in removed {
+                let registry = self.pack.assets.registry;
+                let Some(old) = registry.state(old).cloned() else {
+                    continue;
+                };
+                let new = self.res.facts().get(new).name.to_string();
+                self.native_block_removed([pos.x, pos.y, pos.z], &old.name, &old.properties, &new);
+            }
+        }
     }
     /// Level.setBlock(pos, state, UPDATE_ALL) with neighbour/shape updates.
     fn level_set(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
@@ -15520,6 +15548,7 @@ impl<'a> Game<'a> {
             ender_open: None,
             pending: Default::default(),
             spill: Default::default(),
+            native_removed: Default::default(),
             recipe_ui: Default::default(),
             mount_menu: Default::default(),
             hook: None,

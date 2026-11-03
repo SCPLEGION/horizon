@@ -6,7 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
-//! API 43 adds `native_set_block` and `native_block_redirect`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
+//! API 43 adds `native_set_block`, `native_block_redirect` and `native_block_removed`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
 //! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
 //! API 42 adds `NativeScreen::armor` and `offhand`: the player's worn slots on a mod screen (Mekanism's armor sidebar).
 //! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
@@ -1073,6 +1073,20 @@ impl Game<'_> {
         state: BlockStateId,
     ) {
         let _ = (stack, pos, state);
+    }
+    /// The block at `pos` stopped being `old` (name and properties as it
+    /// was) and is `new` (a name) now, whatever did it: a player, an
+    /// explosion, a piston, a command, a fluid. Called once the change and
+    /// its updates are done, so the hook may set blocks. A mod's multi-cell
+    /// machine clears its other cells here. Server-side. API 43.
+    pub(super) fn native_block_removed(
+        &mut self,
+        pos: [i32; 3],
+        old: &str,
+        old_properties: &std::collections::BTreeMap<String, String>,
+        new: &str,
+    ) {
+        let _ = (pos, old, old_properties, new);
     }
     /// A player right clicks or breaks the block `state` at `pos`: set `to`
     /// to another position and the click or break acts there instead (the
