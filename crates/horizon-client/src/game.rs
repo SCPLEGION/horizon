@@ -1774,6 +1774,8 @@ struct Game<'a> {
     left: bool,
     right: bool,
     cursor: (f32, f32),
+    /// The left mouse button is down (`native_mouse_down`).
+    left_down: bool,
     /// The cursor icon the window shows (`widgets::take_cursor` each frame).
     cursor_icon: horizon_client::widgets::Cursor,
     captured: bool,
@@ -13994,6 +13996,9 @@ impl ApplicationHandler for Game<'_> {
         {
             *button = MouseButton::Right;
         }
+        if let WindowEvent::MouseInput { state, button: MouseButton::Left, .. } = &event {
+            self.left_down = *state == ElementState::Pressed;
+        }
         if let WindowEvent::KeyboardInput { event, .. } = &event
             && let PhysicalKey::Code(key) = event.physical_key
         {
@@ -15260,6 +15265,7 @@ impl<'a> Game<'a> {
             left: false,
             right: false,
             cursor: (0.0, 0.0),
+            left_down: false,
             cursor_icon: horizon_client::widgets::Cursor::Arrow,
             captured: false,
             keyboard_mouse: true,

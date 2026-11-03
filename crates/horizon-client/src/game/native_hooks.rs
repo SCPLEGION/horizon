@@ -6,6 +6,8 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 35 adds `native_mouse_down`, for windows a mod lets the player drag.
+//!
 //! API 34 adds creative tabs for mods (`native_creative_tabs`) and the pages
 //! the creative screen needs for them.
 //!
@@ -154,7 +156,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 34;
+pub(crate) const NATIVE_HOOKS_API: u32 = 35;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1319,6 +1321,11 @@ impl Game<'_> {
     /// Where the mouse is, in GUI pixels. API 20.
     pub(super) fn native_cursor(&self) -> [f32; 2] {
         [self.cursor.0, self.cursor.1]
+    }
+    /// Whether the left mouse button is down: a window of the mod's own follows the
+    /// cursor while it is (`native_screen_click` sees the press only). API 35.
+    pub(super) fn native_mouse_down(&self) -> bool {
+        self.left_down
     }
     /// The size of sprite `name` in its own pixels, if there is one. API 19.
     pub(super) fn native_sprite_size(&self, name: &str) -> Option<[f32; 2]> {
