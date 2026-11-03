@@ -218,6 +218,10 @@ pub struct Part {
     pub children: Vec<Part>,
 }
 impl Part {
+    /// A part tree from the entity-model JSON form (`pose`, `polygons`, `normals`, `children`).
+    pub fn from_json(name: &str, v: &Value) -> Self {
+        Self::parse(name, v)
+    }
     fn parse(name: &str, v: &Value) -> Self {
         let pose: Vec<f32> = v["pose"]
             .as_array()

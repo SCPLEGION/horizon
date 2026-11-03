@@ -41,6 +41,9 @@ pub(super) struct ArmorStandAssets {
     pub player: HashMap<&'static str, Part>,
     /// asset id -> layer kind (humanoid / humanoid_leggings) -> each layer's (texture, undyed colour), in order.
     pub equipment: HashMap<String, HashMap<String, Vec<(String, Option<u32>)>>>,
+    /// asset id -> the models a content mod's equipment asset draws on the wearer
+    /// (`layers.horizon_models`), each with its sprite.
+    pub worn_models: HashMap<String, Vec<(Part, String)>>,
     /// asset id -> `trim_overrides`.
     pub trim_overrides: HashMap<String, Vec<TrimOverride>>,
     pub trims: TrimRegistry,
@@ -75,6 +78,7 @@ impl ArmorStandAssets {
         }
         let mut equipment = HashMap::new();
         let mut trim_overrides = HashMap::new();
+        let mut worn_models = HashMap::new();
         // EquipmentAssetManager reads every namespace: vanilla's and the content mods'.
         let namespaces = std::iter::once("minecraft".to_owned())
             .chain(horizon_client::mod_content::namespaces(root));
@@ -120,6 +124,31 @@ impl ArmorStandAssets {
                         kinds.insert(kind.to_owned(), layers);
                     }
                 }
+                // `layers.horizon_models`: [{"model": "<ns>:<name>", "texture": "<ns>:<name>"}], a model in
+                // `assets/<ns>/horizon/worn_models/<name>.json` (an entity-model part tree posed on the
+                // wearer's parts by name) and a texture in `textures/entity/equipment/horizon_models/`.
+                let models: Vec<(Part, String)> = v["layers"]["horizon_models"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|layer| {
+                        let (ns, name) = layer["model"].as_str()?.split_once(':')?;
+                        let bytes = std::fs::read(
+                            root.join(format!("assets/{ns}/horizon/worn_models/{name}.json")),
+                        )
+                        .ok()?;
+                        let json: serde_json::Value = serde_json::from_slice(&bytes).ok()?;
+                        let tex = layer["texture"].as_str()?;
+                        let (tns, tname) = tex.split_once(':').unwrap_or((namespace.as_str(), tex));
+                        Some((
+                            Part::from_json("horizon_worn", &json),
+                            format!("{tns}:entity/equipment/horizon_models/{tname}"),
+                        ))
+                    })
+                    .collect();
+                if !models.is_empty() {
+                    worn_models.insert(id.clone(), models);
+                }
                 trim_overrides.insert(id.clone(), TrimOverride::list(&v));
                 equipment.insert(id, kinds);
             }
@@ -130,6 +159,7 @@ impl ArmorStandAssets {
             layers,
             player,
             equipment,
+            worn_models,
             trim_overrides,
             trims: TrimRegistry::load(root),
             root: root.to_owned(),
@@ -212,9 +242,15 @@ impl Game<'_> {
             } else {
                 "humanoid"
             };
-            let Some(layers) = assets.equipment.get(&asset).and_then(|k| k.get(kind)) else {
+            let layers = assets
+                .equipment
+                .get(&asset)
+                .and_then(|k| k.get(kind))
+                .map_or(&[][..], Vec::as_slice);
+            let worn = assets.worn_models.get(&asset).map_or(&[][..], Vec::as_slice);
+            if layers.is_empty() && worn.is_empty() {
                 continue;
-            };
+            }
             let Some(part) = assets.player.get(layer) else {
                 continue;
             };
@@ -245,6 +281,12 @@ impl Game<'_> {
                     color,
                     if i == 0 { overlay } else { 0 },
                 ));
+            }
+            // A content mod's own models on the wearer's parts (free runners, a jetpack).
+            for (model, texture) in worn {
+                if let Some(r) = self.gui.atlas.sprites.get(texture.as_str()) {
+                    out.push((model, [r.u0, r.v0, r.u1, r.v1], 0xFFFF_FFFF, overlay));
+                }
             }
             if let Some(r) = stack
                 .and_then(|s| assets.trim_texture(&asset, kind, s))

@@ -79,6 +79,12 @@ template ([modpacks.md](modpacks.md#registries-02-data-driven-blocks-and-items))
   "item": true }
 ```
 
+A block that is not a cube sets its outline and collision with `shape`, boxes `[x0, y0, z0, x1, y1, z1]` in
+blocks (at most 64), the same for every state; or with `shapes`, `{ "property": "facing", "values": { "north": [...], ... } }`
+for one box list per value of a state property its template has. Neighbours cull their faces by that shape,
+and sky light passes a state whose shape is not a full cube, as in vanilla. `"occludes": false` in `properties` drops
+the occlusion altogether (a pipe on a full-cube template).
+
 An item copies its template's data components, with `max_stack_size` and
 `rarity` changed, and any other 26.3 component set or removed in
 `components`, written as a data component patch is: `minecraft:<type>` sets

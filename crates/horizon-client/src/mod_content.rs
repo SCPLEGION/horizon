@@ -421,21 +421,27 @@ impl<'a> Plan<'a> {
                         let J::Arr(row) = &rows[id as usize] else {
                             unreachable!()
                         };
-                        let Some(J::Str(value)) = row
-                            .get(4)
-                            .and_then(|x| x.get("properties"))
-                            .and_then(|x| x.get(&spec.property))
-                        else {
-                            return Err(format!(
-                                "{}: template state lacks property {}",
-                                decl.id, spec.property
-                            )
-                            .into());
+                        let boxes = if spec.property.is_empty() {
+                            // One shape for every state (`shape`).
+                            &spec.values[""]
+                        } else {
+                            let Some(J::Str(value)) = row
+                                .get(4)
+                                .and_then(|x| x.get("properties"))
+                                .and_then(|x| x.get(&spec.property))
+                            else {
+                                return Err(format!(
+                                    "{}: template state lacks property {}",
+                                    decl.id, spec.property
+                                )
+                                .into());
+                            };
+                            let boxes = spec.values.get(value).ok_or_else(|| {
+                                format!("{}: no shape for {}={value}", decl.id, spec.property)
+                            })?;
+                            used.insert(value.as_str());
+                            boxes
                         };
-                        let boxes = spec.values.get(value).ok_or_else(|| {
-                            format!("{}: no shape for {}={value}", decl.id, spec.property)
-                        })?;
-                        used.insert(value.as_str());
                         let mut shape = VoxelShape::empty();
                         for b in boxes {
                             let part = VoxelShape::from_box(Aabb::new(
@@ -446,7 +452,7 @@ impl<'a> Plan<'a> {
                         }
                         out.push(shape);
                     }
-                    if used.len() != spec.values.len() {
+                    if !spec.property.is_empty() && used.len() != spec.values.len() {
                         return Err(format!(
                             "{}: shape values include an unknown {} value",
                             decl.id, spec.property
@@ -656,10 +662,15 @@ impl<'a> Plan<'a> {
                             .collect();
                         row.set("outline", J::Arr(boxes));
                         row.set("outline_edges", J::Arr(shape_edges(shape)));
-                        row.set(
-                            "full_collision",
-                            J::Bool(!shape.join_is_not_empty(&VoxelShape::block(), ShapeOp::XOR)?),
-                        );
+                        let full = !shape.join_is_not_empty(&VoxelShape::block(), ShapeOp::XOR)?;
+                        row.set("full_collision", J::Bool(full));
+                        if !full && b.decl.properties.occludes.is_none() {
+                            // BlockBehaviour: a shape that is not a full cube is not a solid render, so it
+                            // lets sky light down and dampens none; its faces cull by the shape itself.
+                            row.set("solid_render", J::Bool(false));
+                            row.set("skylight_down", J::Bool(true));
+                            row.set("dampening", J::Num(0.into()));
+                        }
                     }
                 }
                 list.push(row);
@@ -900,14 +911,16 @@ impl<'a> Plan<'a> {
     }
 
     /// `occlusion.nbt`: a block declared `"occludes": false` has an empty
-    /// occlusion shape in every state, so it culls no neighbour face.
+    /// occlusion shape in every state, so it culls no neighbour face; a block
+    /// with its own `shapes` that does not say so occludes by that shape
+    /// (`BlockBehaviour.getOcclusionShape` is the shape unless overridden).
     fn occlusion_shapes(&self, tag: &mut Tag) -> Result<()> {
-        let see_through: Vec<&NewBlock> = self
+        let blocks: Vec<&NewBlock> = self
             .blocks
             .iter()
-            .filter(|b| b.decl.properties.occludes == Some(false))
+            .filter(|b| b.decl.properties.occludes == Some(false) || b.shapes.is_some())
             .collect();
-        if see_through.is_empty() {
+        if blocks.is_empty() {
             return Ok(());
         }
         let Tag::Compound(root) = tag else {
@@ -918,14 +931,25 @@ impl<'a> Plan<'a> {
         };
         let empty = entries.len() as i32;
         entries.push(encode_shape(&VoxelShape::empty()));
+        let mut states = Vec::new();
+        for b in blocks {
+            let first = b.rename.first as usize;
+            for i in 0..b.rename.states.len() {
+                let id = match (&b.shapes, b.decl.properties.occludes) {
+                    (_, Some(false)) | (None, _) => empty,
+                    (Some(shapes), _) => {
+                        entries.push(encode_shape(&shapes[i]));
+                        entries.len() as i32 - 1
+                    }
+                };
+                states.push((first + i, id));
+            }
+        }
         let Some(Tag::IntArray(mapping)) = root.get_mut(&JavaString::from("cached_shapes")) else {
             return Err("occlusion table has no mapping".into());
         };
-        for b in see_through {
-            let first = b.rename.first as usize;
-            for state in first..first + b.rename.states.len() {
-                mapping[state] = empty;
-            }
+        for (state, id) in states {
+            mapping[state] = id;
         }
         Ok(())
     }
