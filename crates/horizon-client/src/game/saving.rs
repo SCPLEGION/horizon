@@ -186,7 +186,7 @@ impl Game<'_> {
                     if keys.is_empty() {
                         self.prune_entity_memory();
                         self.save_raids();
-                        self.save.save_forced_chunks(&self.streaming.forced)?;
+                        self.save.save_forced_chunks(&self.saved_forced_chunks())?;
                         self.save_game_metadata()?;
                         save.stage = Stage::Writes;
                     }

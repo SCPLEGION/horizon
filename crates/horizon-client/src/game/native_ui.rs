@@ -2,8 +2,8 @@
 //! window and hears the mouse, the keys and the wheel (Mekanism's module tweaker and radial
 //! selector). API 44.
 use super::{Game, Screen};
-use horizon_client::keybinds;
 use horizon_client::hud::HudBatch;
+use horizon_client::keybinds;
 use winit::event::{KeyEvent, MouseButton};
 
 #[allow(dead_code)]
@@ -26,7 +26,9 @@ impl Game<'_> {
     }
     /// The id of the mod screen that is open. API 44.
     pub(super) fn native_ui_open(&self) -> Option<&str> {
-        self.mod_ui.as_deref().filter(|_| self.screen == Screen::ModUi)
+        self.mod_ui
+            .as_deref()
+            .filter(|_| self.screen == Screen::ModUi)
     }
     pub(super) fn close_native_ui(&mut self) {
         let Some(id) = self.mod_ui.take() else {
