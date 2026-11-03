@@ -7224,6 +7224,7 @@ impl Game<'_> {
         let mut v: Vec<usize> = (0..36).collect();
         if let Some(shown) = self.native_screen_slots() {
             v.extend(shown);
+            v.extend(self.native_screen_worn_slots());
             return v;
         }
         match self.container_kind() {
@@ -7304,7 +7305,9 @@ impl Game<'_> {
                 inventory_x + ((i - 9) % 9) as f32 * 18.0,
                 84.0 + shift + ((i - 9) / 9) as f32 * 18.0,
             ),
+            500..504 if let Some(p) = self.native_screen_armor_slot(i) => p,
             500..504 => (8.0, 8.0 + (i - 500) as f32 * 18.0),
+            504 if let Some(p) = self.native_screen_armor_slot(i) => p,
             // InventoryMenu: the shield slot.
             504 => (77.0, 62.0),
             300..500 if let Some(p) = self.native_screen_slot(i - 300) => p,
