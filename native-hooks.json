@@ -269,6 +269,16 @@
       "name": "world_models",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_world_models"
+    },
+    {
+      "name": "world_items",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_items"
+    },
+    {
+      "name": "world_texts",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_texts"
     }
   ]
 }

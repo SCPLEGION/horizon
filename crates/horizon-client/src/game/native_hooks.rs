@@ -162,6 +162,32 @@ use horizon_world::{
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
+/// An item a mod wants drawn in the world, in its GUI form (a bin's contents). API 44.
+#[derive(Clone, Debug)]
+pub struct NativeWorldItem {
+    /// The item id (`minecraft:diamond`).
+    pub item: String,
+    /// Item space (one unit across, as the GUI draws it) to the world, column major.
+    pub matrix: [f64; 16],
+    /// The block whose light lights it.
+    pub light_at: [i32; 3],
+    /// The seed vanilla's item model resolver takes.
+    pub seed: i32,
+}
+
+/// A line of text a mod wants drawn in the world (`submitText`). API 44.
+#[derive(Clone, Debug)]
+pub struct NativeWorldText {
+    pub text: String,
+    /// Text space (one unit a font pixel, y down) to the world, column major.
+    pub matrix: [f64; 16],
+    pub x: f32,
+    pub y: f32,
+    /// ARGB.
+    pub color: u32,
+    pub light_at: [i32; 3],
+}
+
 /// A translucent box a mod has drawn in the world (`native_world_boxes`): its corners in world
 /// coordinates and the ARGB colour of each face (east, west, up, down, south, north).
 #[derive(Clone, Debug)]
@@ -197,7 +223,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 43;
+pub(crate) const NATIVE_HOOKS_API: u32 = 44;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -742,6 +768,85 @@ impl Game<'_> {
     pub(super) fn native_world_models(&self, models: &mut Vec<NativeWorldModel>) {
         let _ = models;
     }
+    /// Items a mod wants drawn in the world this frame: push a [`NativeWorldItem`] for each. API 44.
+    pub(super) fn native_world_items(&self, items: &mut Vec<NativeWorldItem>) {
+        let _ = items;
+    }
+    /// Text a mod wants drawn in the world this frame: push a [`NativeWorldText`] for each. API 44.
+    pub(super) fn native_world_texts(&self, texts: &mut Vec<NativeWorldText>) {
+        let _ = texts;
+    }
+    /// Whether the side `face` of the block at `pos` is full and sturdy
+    /// (`canOcclude` and `isFaceSturdy(.., FULL)`, a bin's cover test). API 44.
+    pub(super) fn native_face_sturdy(&self, pos: [i32; 3], face: Direction) -> bool {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let facts = self.res.facts().get(state);
+        facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
+    }
+    /// The vertices of the mods' world items and texts, camera relative, appended to the entity quads.
+    pub(super) fn world_item_geometry(
+        &self,
+        camera: glam::DVec3,
+        out: &mut Vec<horizon_client::mesher::Vertex>,
+    ) {
+        let to_camera = |m: &[f64; 16]| {
+            (glam::DMat4::from_translation(-camera) * glam::DMat4::from_cols_array(m)).as_mat4()
+        };
+        let mut items = Vec::new();
+        self.native_world_items(&mut items);
+        for i in &items {
+            let rel = to_camera(&i.matrix);
+            if rel.w_axis.truncate().length_squared() > 64.0 * 64.0 {
+                continue;
+            }
+            let stack = ItemStack::new(&i.item, 1);
+            if self.res.items().get(&i.item).is_none() {
+                continue;
+            }
+            let start = out.len();
+            let state = self.resolve_item(
+                &stack,
+                horizon_assets::item_model::DisplayContext::Gui,
+                None,
+                i.seed,
+            );
+            let light = self
+                .world
+                .light(i.light_at[0], i.light_at[1], i.light_at[2]);
+            self.submit_item_world(
+                &state,
+                rel,
+                horizon_client::block_entity_render::vertex_light(light),
+                out,
+            );
+            self.cull_entity_vertices(out, start);
+        }
+        let mut texts = Vec::new();
+        self.native_world_texts(&mut texts);
+        for t in &texts {
+            let rel = to_camera(&t.matrix);
+            if rel.w_axis.truncate().length_squared() > 64.0 * 64.0 {
+                continue;
+            }
+            let light = self
+                .world
+                .light(t.light_at[0], t.light_at[1], t.light_at[2]);
+            let call = horizon_client::block_entity_render::TextCall {
+                matrix: rel,
+                x: t.x,
+                y: t.y,
+                text: t.text.clone(),
+                color: t.color,
+                outline: 0,
+                light: horizon_client::block_entity_render::vertex_light(light),
+            };
+            horizon_client::block_entity_render::draw_text(
+                &|c| self.gui.atlas.glyph_cell(c),
+                &call,
+                out,
+            );
+        }
+    }
     /// The vertices of the mods' world models, camera relative, appended to the entity quads.
     pub(super) fn world_model_geometry(
         &self,
@@ -761,7 +866,9 @@ impl Game<'_> {
             if rel.length_squared() > 128.0 * 128.0 {
                 continue;
             }
-            let light = self.world.light(m.light_at[0], m.light_at[1], m.light_at[2]);
+            let light = self
+                .world
+                .light(m.light_at[0], m.light_at[1], m.light_at[2]);
             let packed = if m.full_bright {
                 240 | 240 << 8
             } else {
@@ -2717,7 +2824,11 @@ fn sprite_box(
                     p[ua] = cu;
                     p[va] = cv;
                     let tu = (cu - ou) as f32;
-                    let tv = if flip_v { 1.0 - (cv - ov) as f32 } else { (cv - ov) as f32 };
+                    let tv = if flip_v {
+                        1.0 - (cv - ov) as f32
+                    } else {
+                        (cv - ov) as f32
+                    };
                     out.push(horizon_client::mesher::Vertex {
                         pos: std::array::from_fn(|i| (p[i] - camera[i]) as f32),
                         uv: [

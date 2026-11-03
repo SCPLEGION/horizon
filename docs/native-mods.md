@@ -216,6 +216,10 @@ API 43 also adds `native_world_models(models)`: a mod pushes `NativeWorldModel {
 in `assets/<ns>/horizon/world_models/<name>.json` (pixels, y up) textured from `textures/entity/equipment/horizon_models/<name>.png`, and the game
 draws it each frame (a wind generator's spinning rotor). Bundles that use any of these need `"hooks": 43`.
 
+API 44 adds `native_world_items(items)` (`NativeWorldItem { item, matrix, light_at, seed }`: an item in its GUI form under a world-space matrix, a bin's
+contents), `native_world_texts(texts)` (`NativeWorldText { text, matrix, x, y, color, light_at }`: a line of text in font pixels, y down, like a sign's) and
+`native_face_sturdy(pos, face)` (`canOcclude` and a full sturdy face). Matrices are column major, in world space. Bundles that use them need `"hooks": 44`.
+
 API 42 adds `NativeScreen { armor, offhand }`: where the screen shows the player's four armor slots (head first, 18 px apart down) and the off hand slot
 (`addArmorSlots`). They are the player's own worn slots; clicks go to the inventory menu (window 0) of a Horizon server. Bundles that use it need `"hooks": 42`.
 

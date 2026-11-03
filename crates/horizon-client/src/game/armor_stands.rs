@@ -284,7 +284,10 @@ impl Game<'_> {
                 .get(&asset)
                 .and_then(|k| k.get(kind))
                 .map_or(&[][..], Vec::as_slice);
-            let worn = assets.worn_models.get(&asset).map_or(&[][..], Vec::as_slice);
+            let worn = assets
+                .worn_models
+                .get(&asset)
+                .map_or(&[][..], Vec::as_slice);
             if layers.is_empty() && worn.is_empty() {
                 continue;
             }
@@ -321,9 +324,7 @@ impl Game<'_> {
             }
             // A content mod's own models on the wearer's parts (free runners, a jetpack).
             for (model, texture, hide_with) in worn {
-                if hide_with.iter().any(|id| {
-                    items_worn.contains(&id.as_str())
-                }) {
+                if hide_with.iter().any(|id| items_worn.contains(&id.as_str())) {
                     continue;
                 }
                 if let Some(r) = self.gui.atlas.sprites.get(texture.as_str()) {
