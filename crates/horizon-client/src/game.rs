@@ -16400,11 +16400,11 @@ fn load_world_rest(
             behaviour_json,
             gameplay_projection,
         )?,
-        mob_types: MobTypes::load(root)?
-            .types
-            .into_iter()
-            .map(|(k, v)| (k, Arc::new(v)))
-            .collect(),
+        mob_types: {
+            let mut types = MobTypes::load(root)?.types;
+            Game::native_mob_types(&mut types);
+            types.into_iter().map(|(k, v)| (k, Arc::new(v))).collect()
+        },
         mob_data,
         player_type: perspective::player_type(root),
         player_arm: player_arms(root, "minecraft:player#main"),

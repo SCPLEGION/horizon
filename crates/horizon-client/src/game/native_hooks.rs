@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 46 adds `native_mob_types`: a mod adds mob types of its own, networked as a vanilla base type (Mekanism's Robit).
 //! API 45 adds `native_keep_chunks`: a mod keeps chunks loaded and ticking for as long as it asks (Mekanism's dimensional stabilizer and anchor upgrade).
 //! API 44 adds `native_open_ui` and `native_ui_draw`, `native_ui_click`, `native_ui_key`, `native_ui_wheel`, `native_ui_closed`: a screen of a mod's own, tied to no block (Mekanism's module tweaker and radial selector).
 //! API 43 adds `native_set_block`, `native_block_redirect` and `native_block_removed`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
@@ -879,6 +880,14 @@ impl Game<'_> {
         let mut taken = false;
         self.native_screen_wheel(&block, at, steps, &mut taken);
         taken
+    }
+    /// The mob types are loaded: a mod adds its own to `types` (a clone of a vanilla type with another
+    /// `id`, size, health or speed) and declares it with `horizon_client::mobs::register_mod_mob_base(id, base)`;
+    /// networking sends it as `base`. `/summon` and the saved entities find it by `id`. API 46.
+    pub(super) fn native_mob_types(
+        types: &mut std::collections::HashMap<String, horizon_client::mobs::MobType>,
+    ) {
+        let _ = types;
     }
     /// The mod's own screen `id` (opened by `native_open_ui`) is drawn: fill the
     /// whole window (`batch.width` by `batch.height`, GUI pixels) with `native_fill`,

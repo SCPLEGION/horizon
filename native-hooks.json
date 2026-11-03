@@ -294,6 +294,11 @@
       "name": "ui_closed",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_closed"
+    },
+    {
+      "name": "mob_types",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mob_types"
     }
   ]
 }

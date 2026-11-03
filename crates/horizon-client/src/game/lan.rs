@@ -201,7 +201,8 @@ fn mob_variant_meta(
     meta: &mut Vec<(u8, i32, Value)>,
     defaults: &mut Vec<(u8, i32, Value)>,
 ) {
-    let (kind, e) = (m.kind.id.as_str(), &m.extra);
+    let network = horizon_client::mobs::network_kind(&m.kind.id);
+    let (kind, e) = (network.as_str(), &m.extra);
     let id = |registry: &str, name: &str| hub.registry_id(registry, &format!("minecraft:{name}"));
     match kind {
         // Axolotl.DATA_VARIANT (after AgeableMob's two).
@@ -341,7 +342,8 @@ fn mob_meta(
     meta: &mut Vec<(u8, i32, Value)>,
     defaults: &mut Vec<(u8, i32, Value)>,
 ) {
-    let kind = m.kind.id.as_str();
+    let network = horizon_client::mobs::network_kind(&m.kind.id);
+    let kind = network.as_str();
     // Entity.DATA_SHARED_FLAGS_ID: on fire 0x01, sprinting 0x08 (a dashing
     // cat or ocelot), swimming 0x10 (a drowned under water,
     // `Drowned.setSwimming`), invisible 0x20 (the effect's flag) and glowing
@@ -1569,7 +1571,11 @@ impl Game<'_> {
                 Holder::Mob(id) => Some(id as i32),
                 Holder::Knot(p) => self.knot_ids.get(&p).map(|&id| id as i32),
             });
-            let e = out.add(m.id as i32, entity_uuid(m.id), m.kind.id.as_str());
+            let e = out.add(
+                m.id as i32,
+                entity_uuid(m.id),
+                &horizon_client::mobs::network_kind(&m.kind.id),
+            );
             e.position = [m.position.x, m.position.y, m.position.z];
             (e.yaw, e.pitch, e.head_yaw) = (m.yaw, m.head_pitch, m.head_yaw);
             e.on_ground = m.on_ground;
