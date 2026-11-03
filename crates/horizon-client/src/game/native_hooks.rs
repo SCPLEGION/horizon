@@ -1869,6 +1869,11 @@ impl Game<'_> {
         let facts = self.res.facts().get(state);
         facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
     }
+    /// The block id of the mod screen showing now, if any. API 48.
+    #[allow(dead_code)]
+    pub(super) fn native_open_screen_block(&self) -> Option<String> {
+        self.shown_native_screen().map(|s| s.block.clone())
+    }
     /// Where mob `id` is drawn this frame: its interpolated position (feet), body yaw and head yaw in degrees and
     /// head pitch. API 48.
     #[allow(dead_code)]
