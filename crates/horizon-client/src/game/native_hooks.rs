@@ -767,8 +767,9 @@ impl Game<'_> {
             } else {
                 (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8)
             };
-            let [a, r, g, b] = m.color.to_be_bytes();
-            let color = u32::from(a) << 24 | u32::from(b) << 16 | u32::from(g) << 8 | u32::from(r);
+            let [ca, cr, cg, cb] = m.color.to_be_bytes();
+            let color =
+                u32::from(ca) << 24 | u32::from(cb) << 16 | u32::from(cg) << 8 | u32::from(cr);
             let turn = match m.rotation {
                 Some([x, y, z, w]) => glam::Quat::from_xyzw(x, y, z, w).normalize(),
                 None => glam::Quat::from_euler(
