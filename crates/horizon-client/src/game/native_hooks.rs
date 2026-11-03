@@ -6,6 +6,8 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 36 adds `native_screen_alt` and `NativeScreen::alt`: a screen that swaps between two layouts.
+//!
 //! API 35 adds `native_mouse_down`, for windows a mod lets the player drag.
 //!
 //! API 34 adds creative tabs for mods (`native_creative_tabs`) and the pages
@@ -156,7 +158,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 35;
+pub(crate) const NATIVE_HOOKS_API: u32 = 36;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -252,6 +254,9 @@ pub struct NativeScreen {
     /// The mod draws the title and the "Inventory" label itself
     /// (`native_screen_draw`); Horizon leaves them out.
     pub own_labels: bool,
+    /// A second layout the screen swaps to while `native_screen_alt` says so (Mekanism's
+    /// frequency selector is a screen of another size). API 36.
+    pub alt: Option<Box<NativeScreen>>,
 }
 
 /// The mod screen open on this client: the block it is for, the key its
@@ -643,6 +648,11 @@ impl Game<'_> {
     /// there either, so shift-clicks never fill it. API 19.
     pub(super) fn native_screen(&self, block: &str, screen: &mut Option<NativeScreen>) {
         let _ = (block, screen);
+    }
+    /// Whether block `block`'s screen shows its `NativeScreen::alt` layout now: set `alt`.
+    /// Asked every frame, so keep it a flag read. API 36.
+    pub(super) fn native_screen_alt(&self, block: &str, alt: &mut bool) {
+        let _ = (block, alt);
     }
     /// Draw block `block`'s screen at `origin` (its top left, GUI pixels),
     /// over a plain panel with its slots' frames and under the items and
@@ -1713,6 +1723,15 @@ impl Game<'_> {
             });
         }
     }
+    /// The layout of the open screen: its alternative while the mod says so.
+    fn layout_of<'a>(&self, s: &'a OpenNativeScreen) -> &'a NativeScreen {
+        let mut alt = false;
+        self.native_screen_alt(&s.block, &mut alt);
+        match (alt, s.screen.alt.as_deref()) {
+            (true, Some(other)) => other,
+            _ => &s.screen,
+        }
+    }
     /// The mod screen showing now, if any.
     fn shown_native_screen(&self) -> Option<&OpenNativeScreen> {
         self.mod_screen
@@ -1731,12 +1750,12 @@ impl Game<'_> {
     }
     /// The open mod screen's height.
     pub(super) fn native_screen_height(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.height)
+        self.shown_native_screen().map(|s| self.layout_of(s).height)
     }
     /// Where the open mod screen puts container slot `slot`.
     pub(super) fn native_screen_slot(&self, slot: usize) -> Option<(f32, f32)> {
         let s = self.shown_native_screen()?;
-        s.screen
+        self.layout_of(s)
             .slots
             .get(slot)
             .copied()
@@ -1746,7 +1765,7 @@ impl Game<'_> {
     /// The container slots the open mod screen shows (300.. ids).
     pub(super) fn native_screen_slots(&self) -> Option<Vec<usize>> {
         let s = self.shown_native_screen()?;
-        let shown = s.screen.slots.iter().enumerate();
+        let shown = self.layout_of(s).slots.iter().enumerate();
         Some(
             shown
                 .filter(|(_, p)| p.is_some())
@@ -1756,15 +1775,15 @@ impl Game<'_> {
     }
     /// The first row of the player's inventory on the open mod screen.
     pub(super) fn native_screen_inventory_y(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_y)
+        self.shown_native_screen().map(|s| self.layout_of(s).inventory_y)
     }
     /// The open mod screen's inventory's left column.
     pub(super) fn native_screen_inventory_x(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.inventory_x)
+        self.shown_native_screen().map(|s| self.layout_of(s).inventory_x)
     }
     /// The open mod screen's width.
     pub(super) fn native_screen_width(&self) -> Option<f32> {
-        self.shown_native_screen().map(|s| s.screen.width)
+        self.shown_native_screen().map(|s| self.layout_of(s).width)
     }
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
@@ -1774,7 +1793,8 @@ impl Game<'_> {
             return false;
         };
         let atlas = &self.gui.atlas;
-        let (w, h) = (s.screen.width, s.screen.height);
+        let layout = self.layout_of(s);
+        let (w, h) = (layout.width, layout.height);
         batch.fill(atlas, ox, oy, w, h, rgba(0, 0, 0, 255));
         batch.fill(
             atlas,
@@ -1807,7 +1827,7 @@ impl Game<'_> {
             );
         }
         self.native_screen_draw(&s.block, &s.data, batch, [ox, oy]);
-        if s.screen.own_labels {
+        if layout.own_labels {
             return true;
         }
         let grey = rgba(64, 64, 64, 255);
@@ -1815,7 +1835,7 @@ impl Game<'_> {
             batch.text_styled(atlas, &title, ox + 8.0, oy + 6.0, grey, false);
         }
         let inventory = self.translate("container.inventory", "Inventory");
-        let label_y = oy + s.screen.inventory_y - 11.0;
+        let label_y = oy + layout.inventory_y - 11.0;
         batch.text(atlas, &inventory, ox + 8.0, label_y, grey, false);
         true
     }
