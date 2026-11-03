@@ -55,19 +55,19 @@ impl Game<'_> {
         let at = self.native_cursor();
         self.native_ui_click(&id, at, code, pressed);
     }
-    /// Draws the mod's world model `model` (`native_world_models`) into the GUI: turned `yaw` degrees about
-    /// its vertical axis, tilted a little to be seen from above, `size` GUI pixels to the block, centred in
-    /// `clip` (`[x0, y0, x1, y1]`, which also cuts it off), the model `height` blocks tall. `texture` is the
-    /// atlas sprite to wear in place of the model's own (a skin); a missing one falls back to it. False when
-    /// there is no such model. API 49.
+    /// Draws the mod's world model `model` (`native_world_models`) into the GUI as a picture-in-picture
+    /// (`PictureInPictureRenderer`): standing with its feet at `origin` (GUI pixels), `size` pixels to the
+    /// block, turned `yaw` degrees about the vertical axis through its centre, lit like an entity in a UI,
+    /// and cut off outside `clip` (`[x0, y0, x1, y1]`). `texture` is the atlas sprite to wear in place of the
+    /// model's own (a skin); a missing one falls back to it. False when there is no such model. API 49.
     pub(super) fn native_gui_model(
         &self,
         batch: &mut HudBatch,
         model: &str,
         texture: Option<&str>,
         clip: [f32; 4],
+        origin: [f32; 2],
         size: f32,
-        height: f32,
         yaw: f32,
     ) -> bool {
         let Some((part, own)) = self.armor_stand_assets.world_models.get(model) else {
@@ -91,13 +91,10 @@ impl Game<'_> {
             0,
             &mut verts,
         );
-        let (cx, cy) = ((clip[0] + clip[2]) / 2.0, (clip[1] + clip[3]) / 2.0);
-        // As the inventory's player box: Rz(pi) * Rx(tilt) under the box centre and a scale with z flipped.
-        let gui = glam::Mat4::from_translation(glam::Vec3::new(cx, cy, 0.0))
+        // The renderer's pose: translate to the box, scale (size, size, -size), then Rz(pi) turns the model up.
+        let gui = glam::Mat4::from_translation(glam::Vec3::new(origin[0], origin[1], 0.0))
             * glam::Mat4::from_scale(glam::Vec3::new(size, size, -size))
-            * glam::Mat4::from_translation(glam::Vec3::new(0.0, height / 2.0, 0.0))
-            * glam::Mat4::from_rotation_z(std::f32::consts::PI)
-            * glam::Mat4::from_rotation_x(15f32.to_radians());
+            * glam::Mat4::from_rotation_z(std::f32::consts::PI);
         let quads = super::perspective::player_preview_quads(verts, gui, None, sprites);
         let start = batch.vertices.len();
         for (_, p, uv, color) in quads {
