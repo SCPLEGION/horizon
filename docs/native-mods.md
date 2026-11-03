@@ -207,6 +207,9 @@ API 41 adds `native_world_boxes(boxes)`: a mod pushes `NativeWorldBox { min, max
 and the game draws each as a translucent box, full bright and seen from both sides, like translucent item quads
 (Mekanism's Digital Miner visuals). Bundles that use it need `"hooks": 41`.
 
+API 43 adds `native_block_redirect(pos, state, to)`: before a right click or a break, a mod sets `to` and the click or break acts on that
+position instead (Mekanism's bounding blocks send a click on a filler cell to the machine that owns it). Bundles that use it need `"hooks": 43`.
+
 API 42 adds `NativeScreen { armor, offhand }`: where the screen shows the player's four armor slots (head first, 18 px apart down) and the off hand slot
 (`addArmorSlots`). They are the player's own worn slots; clicks go to the inventory menu (window 0) of a Horizon server. Bundles that use it need `"hooks": 42`.
 

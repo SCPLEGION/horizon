@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 43 adds `native_block_redirect`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
 //! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
 //! API 42 adds `NativeScreen::armor` and `offhand`: the player's worn slots on a mod screen (Mekanism's armor sidebar).
 //! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
@@ -173,7 +174,7 @@ pub struct NativeWorldBox {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 42;
+pub(crate) const NATIVE_HOOKS_API: u32 = 43;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1072,6 +1073,21 @@ impl Game<'_> {
         state: BlockStateId,
     ) {
         let _ = (stack, pos, state);
+    }
+    /// A player right clicks or breaks the block `state` at `pos`: set `to`
+    /// to another position and the click or break acts there instead (the
+    /// block, its use, its drops and its break all belong to that position).
+    /// A mod's multi-cell machine answers for its filler blocks with the
+    /// position of the block that owns them (Mekanism's bounding blocks).
+    /// Called before `native_right_click_block` and `native_destroy_block`,
+    /// server-side, for every player of the world. API 43.
+    pub(super) fn native_block_redirect(
+        &self,
+        pos: [i32; 3],
+        state: BlockStateId,
+        to: &mut Option<[i32; 3]>,
+    ) {
+        let _ = (pos, state, to);
     }
     /// A player right clicks the block at `pos` with `self.hand`, `face` the
     /// face clicked: where `ServerPlayerGameMode.useItemOn` starts, before

@@ -4623,6 +4623,14 @@ impl Game<'_> {
         }
         self.stats.add("used", &stack.item, 1);
     }
+    /// `native_block_redirect` for the block at `pos`: where a click or
+    /// break there really acts.
+    fn redirected_block(&self, pos: [i32; 3]) -> [i32; 3] {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let mut to = None;
+        self.native_block_redirect(pos, state, &mut to);
+        to.unwrap_or(pos)
+    }
     fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
         self.lan_break_pos = Some(pos);
         let broken = self.with_player_actor(|game| game.break_block_as_player(pos));
@@ -4646,6 +4654,8 @@ impl Game<'_> {
         {
             return Ok(());
         }
+        // Native mods: a filler block's break is its owner's.
+        let pos = self.redirected_block(pos);
         // ServerPlayerGameMode.destroyBlock.
         let state = self.world.block(pos[0], pos[1], pos[2]);
         // Native mods, once the game allowed the break: a canceled one keeps
@@ -4908,6 +4918,17 @@ impl Game<'_> {
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts: a
         // canceled click does nothing (a guest's block is sent back).
+        // A sneaking player with something in hand places against the block
+        // clicked, so only a click that lets the block react is redirected.
+        let redirected = block_hit.map(|hit| Hit {
+            pos: if sneaking && hands_full {
+                hit.pos
+            } else {
+                self.redirected_block(hit.pos)
+            },
+            ..*hit
+        });
+        let block_hit = redirected.as_ref();
         if let Some(hit) = block_hit {
             let mut canceled = false;
             self.native_right_click_block(hit.pos, hit.face, &mut canceled);
