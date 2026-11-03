@@ -279,6 +279,11 @@
       "name": "world_texts",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_world_texts"
+    },
+    {
+      "name": "world_quads",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_quads"
     }
   ]
 }

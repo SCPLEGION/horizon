@@ -220,6 +220,9 @@ API 44 adds `native_world_items(items)` (`NativeWorldItem { item, matrix, light_
 contents or a liquifier's food), `native_world_texts(texts)` (`NativeWorldText { text, matrix, x, y, color, light_at }`: a line of text in font pixels, y down, like a sign's) and
 `native_face_sturdy(pos, face)` (`canOcclude` and a full sturdy face). Matrices are column major, in world space. Bundles that use them need `"hooks": 44`.
 
+API 45 adds `native_world_quads(quads)` (`NativeWorldQuad { corners, color, sprite, uv }`: a flat full bright quad in world space, drawn from both sides, tinted, with a GUI-atlas sprite or the plain
+colour: lightning bolts, billboarding effects) and `native_camera_axes()` (the camera's right and up directions, for a billboard). Bundles that use them need `"hooks": 45`.
+
 API 42 adds `NativeScreen { armor, offhand }`: where the screen shows the player's four armor slots (head first, 18 px apart down) and the off hand slot
 (`addArmorSlots`). They are the player's own worn slots; clicks go to the inventory menu (window 0) of a Horizon server. Bundles that use it need `"hooks": 42`.
 

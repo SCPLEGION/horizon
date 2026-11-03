@@ -190,6 +190,21 @@ pub struct NativeWorldText {
     pub light_at: [i32; 3],
 }
 
+/// A flat quad a mod wants drawn in the world (`native_world_quads`: a lightning bolt's strips, a billboard).
+/// API 45.
+#[derive(Clone, Debug)]
+pub struct NativeWorldQuad {
+    /// The four corners, counter-clockwise seen from the front; it is drawn from both sides.
+    pub corners: [[f64; 3]; 4],
+    /// ARGB, tinting the sprite.
+    pub color: u32,
+    /// A sprite of the GUI atlas; none for the plain colour.
+    pub sprite: Option<String>,
+    /// The part of the sprite, `[u0, v0, u1, v1]` from 0 to 1: corner 0 gets (u0, v1), 1 (u1, v1), 2 (u1, v0) and
+    /// 3 (u0, v0).
+    pub uv: [f32; 4],
+}
+
 /// A translucent box a mod has drawn in the world (`native_world_boxes`): its corners in world
 /// coordinates and the ARGB colour of each face (east, west, up, down, south, north).
 #[derive(Clone, Debug)]
@@ -227,7 +242,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 44;
+pub(crate) const NATIVE_HOOKS_API: u32 = 45;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -779,6 +794,54 @@ impl Game<'_> {
     /// Text a mod wants drawn in the world this frame: push a [`NativeWorldText`] for each. API 44.
     pub(super) fn native_world_texts(&self, texts: &mut Vec<NativeWorldText>) {
         let _ = texts;
+    }
+    /// Quads a mod wants drawn in the world this frame: push a [`NativeWorldQuad`] for each. API 45.
+    pub(super) fn native_world_quads(&self, quads: &mut Vec<NativeWorldQuad>) {
+        let _ = quads;
+    }
+    /// The vertices of the mods' world quads, camera relative, full bright, appended to the entity quads.
+    pub(super) fn world_quad_geometry(
+        &self,
+        camera: glam::DVec3,
+        out: &mut Vec<horizon_client::mesher::Vertex>,
+    ) {
+        let mut quads = Vec::new();
+        self.native_world_quads(&mut quads);
+        if quads.is_empty() {
+            return;
+        }
+        let white = self.gui.atlas.font.white();
+        let white_uv = horizon_client::gfx::lightning::white_uv(&white);
+        for q in &quads {
+            let [a, r, g, bl] = q.color.to_be_bytes();
+            let color = u32::from(a) << 24 | u32::from(bl) << 16 | u32::from(g) << 8 | u32::from(r);
+            let rect = q
+                .sprite
+                .as_deref()
+                .and_then(|name| self.gui.atlas.sprites.get(name))
+                .map(|r| [r.u0, r.v0, r.u1, r.v1]);
+            let corner_uv = |i: usize| match rect {
+                Some(r) => {
+                    let [u0, v0, u1, v1] = q.uv;
+                    let (tu, tv) = [(u0, v1), (u1, v1), (u1, v0), (u0, v0)][i];
+                    [r[0] + (r[2] - r[0]) * tu, r[1] + (r[3] - r[1]) * tv]
+                }
+                None => white_uv,
+            };
+            for order in [[0, 1, 2, 3], [3, 2, 1, 0]] {
+                for i in order {
+                    out.push(horizon_client::mesher::Vertex {
+                        pos: std::array::from_fn(|k| (q.corners[i][k] - camera[k]) as f32),
+                        uv: corner_uv(i),
+                        layer: horizon_client::gfx::TRANSLUCENT_ITEM_OVERLAY,
+                        color,
+                        light: 240 | 240 << 8,
+                        normal: [0; 4],
+                        glint_uv: [0.0, 0.0],
+                    });
+                }
+            }
+        }
     }
     /// The vertices of the mods' world items and texts, camera relative, appended to the entity quads.
     pub(super) fn world_item_geometry(
@@ -1738,6 +1801,21 @@ impl Game<'_> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);
         facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
+    }
+    /// The camera's right and up directions in the world, for a billboard. API 45.
+    #[allow(dead_code)]
+    pub(super) fn native_camera_axes(&self) -> ([f64; 3], [f64; 3]) {
+        let (yaw, pitch) = (
+            f64::from(self.yaw).to_radians(),
+            f64::from(self.pitch).to_radians(),
+        );
+        let right = glam::DVec3::new(-yaw.cos(), 0.0, -yaw.sin());
+        let forward = glam::DVec3::new(
+            -yaw.sin() * pitch.cos(),
+            -pitch.sin(),
+            yaw.cos() * pitch.cos(),
+        );
+        (right.to_array(), right.cross(forward).to_array())
     }
     /// Puts `stack` into the container at `pos` (a chest, a furnace, a mod
     /// container) through its side `face`, as a hopper would, and returns
