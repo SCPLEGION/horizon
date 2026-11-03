@@ -8556,12 +8556,22 @@ impl Game<'_> {
                 visible,
                 selected_tab_hovered: tab_hovered,
             });
-        clicked_outside(
+        let outside = clicked_outside(
             f64::from(self.cursor.0),
             f64::from(self.cursor.1),
             image,
             book,
-        )
+        );
+        // A mod screen's slot on a side holder lies past the window (Mekanism's washer holds two at
+        // x 180): `GuiMekanism.hasClickedOutside` counts the holders as inside, so a slot of the mod's
+        // screen under the cursor does too.
+        if outside
+            && self.native_screen_width().is_some()
+            && self.slot_at(batch, self.cursor.0, self.cursor.1).is_some()
+        {
+            return false;
+        }
+        outside
     }
     /// The open container screen's window: its place and size.
     fn container_image(&self, batch: &HudBatch) -> horizon_client::container_screen::Image {
