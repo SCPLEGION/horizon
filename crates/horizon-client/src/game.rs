@@ -13192,6 +13192,9 @@ impl Game<'_> {
         if !title {
             self.end_geometry(camera, &mut entities);
         }
+        if !title {
+            self.world_box_geometry(camera, &mut entities);
+        }
         let weather = if !title && self.dim == Dim::Overworld && self.settings.horizon.weather {
             horizon_client::spans::time("weather", || self.weather_geometry(camera, alpha))
         } else {

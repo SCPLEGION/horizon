@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
 //! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
 //! API 39 adds `native_fill_quad`: a four-cornered shape in one colour (a mod's lightning).
 //! API 38 adds `native_slot_rules`: what each slot of a mod screen's menu takes (an energy slot, an output slot).
@@ -159,10 +160,19 @@ use horizon_world::{
 use std::{fs, path::PathBuf, sync::Arc, time::Duration};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
+/// A translucent box a mod has drawn in the world (`native_world_boxes`): its corners in world
+/// coordinates and the ARGB colour of each face (east, west, up, down, south, north).
+#[derive(Clone, Debug)]
+pub struct NativeWorldBox {
+    pub min: [f64; 3],
+    pub max: [f64; 3],
+    pub colors: [u32; 6],
+}
+
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 40;
+pub(crate) const NATIVE_HOOKS_API: u32 = 41;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -690,6 +700,92 @@ impl Game<'_> {
         let mut consumed = false;
         self.native_screen_escape(&block, &mut consumed);
         consumed
+    }
+    /// Boxes a mod wants drawn in the world this frame: push a [`NativeWorldBox`] for each. They are
+    /// drawn like translucent item quads (full bright, no depth writes, seen from both sides). API 41.
+    pub(super) fn native_world_boxes(&self, boxes: &mut Vec<NativeWorldBox>) {
+        let _ = boxes;
+    }
+    /// The vertices of the mods' world boxes, camera relative, appended to the entity quads.
+    pub(super) fn world_box_geometry(
+        &self,
+        camera: glam::DVec3,
+        out: &mut Vec<horizon_client::mesher::Vertex>,
+    ) {
+        let mut boxes = Vec::new();
+        self.native_world_boxes(&mut boxes);
+        if boxes.is_empty() {
+            return;
+        }
+        let white = self.gui.atlas.font.white();
+        let uv = horizon_client::gfx::lightning::white_uv(&white);
+        for b in &boxes {
+            let lo: [f32; 3] = std::array::from_fn(|i| (b.min[i] - camera[i]) as f32);
+            let hi: [f32; 3] = std::array::from_fn(|i| (b.max[i] - camera[i]) as f32);
+            let at = |x: bool, y: bool, z: bool| {
+                [
+                    if x { hi[0] } else { lo[0] },
+                    if y { hi[1] } else { lo[1] },
+                    if z { hi[2] } else { lo[2] },
+                ]
+            };
+            // East, west, up, down, south, north: each face's four corners.
+            let faces = [
+                [
+                    at(true, false, false),
+                    at(true, true, false),
+                    at(true, true, true),
+                    at(true, false, true),
+                ],
+                [
+                    at(false, false, false),
+                    at(false, false, true),
+                    at(false, true, true),
+                    at(false, true, false),
+                ],
+                [
+                    at(false, true, false),
+                    at(false, true, true),
+                    at(true, true, true),
+                    at(true, true, false),
+                ],
+                [
+                    at(false, false, false),
+                    at(true, false, false),
+                    at(true, false, true),
+                    at(false, false, true),
+                ],
+                [
+                    at(false, false, true),
+                    at(true, false, true),
+                    at(true, true, true),
+                    at(false, true, true),
+                ],
+                [
+                    at(false, false, false),
+                    at(false, true, false),
+                    at(true, true, false),
+                    at(true, false, false),
+                ],
+            ];
+            for (corners, argb) in faces.into_iter().zip(b.colors) {
+                let [a, r, g, bl] = argb.to_be_bytes();
+                let color =
+                    u32::from(a) << 24 | u32::from(bl) << 16 | u32::from(g) << 8 | u32::from(r);
+                for p in corners {
+                    out.push(horizon_client::mesher::Vertex {
+                        pos: p,
+                        uv,
+                        layer: horizon_client::gfx::TRANSLUCENT_ITEM_OVERLAY,
+                        color,
+                        // Full bright: sky and block light 15 (16x fixed point).
+                        light: 240 | 240 << 8,
+                        normal: [0; 4],
+                        glint_uv: [0.0, 0.0],
+                    });
+                }
+            }
+        }
     }
     /// The wheel turned `steps` (positive up) with the cursor at `at` (as in
     /// `native_screen_click`) on block `block`'s screen: set `taken` when the
