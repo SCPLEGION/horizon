@@ -249,6 +249,11 @@
       "name": "screen_wheel",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_wheel"
+    },
+    {
+      "name": "world_boxes",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_boxes"
     }
   ]
 }
