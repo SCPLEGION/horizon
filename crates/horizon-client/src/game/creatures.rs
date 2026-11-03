@@ -638,7 +638,9 @@ impl Game<'_> {
             self.tick_village_siege();
         }
         self.tick_raids();
-        self.tick_creature_entities()
+        let result = self.tick_creature_entities();
+        self.native_mobs_tick();
+        result
     }
     /// `DistanceManager.inEntityTickingRange` in an entity-ticking chunk
     /// (block coordinates), from every player's tickets (`update_chunk_tickets`).
@@ -908,6 +910,11 @@ impl Game<'_> {
     }
     /// LivingEntity.die / dropAllDeathLoot.
     fn mob_died(&mut self, m: &Mob) {
+        self.native_mob_died(
+            &m.kind.id,
+            [m.position.x, m.position.y, m.position.z],
+            m.extra.mod_data.as_ref(),
+        );
         // LivingEntity.die: a sleeper gets up, and its bed is free again.
         if let Some(bed) = horizon_client::mobs::villager::sleeping_pos(m) {
             self.wake_villager(m.id);

@@ -768,6 +768,8 @@ pub fn anger_left(anger_end: i64, game_time: i64) -> i32 {
 /// Species-specific persistent state (variants, colours, taming, ageing...).
 #[derive(Clone, Debug, Default)]
 pub struct Extra {
+    /// A native mod's data on this mob (`mod_data` in its saved NBT). API 46.
+    pub mod_data: Option<horizon_world::nbt::Compound>,
     /// A player's or mannequin's `minecraft:scale`, which scales the whole model
     /// (`LivingEntityRenderState.scale`): the local player's own, and on a
     /// server the others' from their attribute updates; 0 is the default, 1.

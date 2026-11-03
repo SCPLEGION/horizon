@@ -299,6 +299,21 @@
       "name": "mob_types",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_mob_types"
+    },
+    {
+      "name": "mobs_tick",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mobs_tick"
+    },
+    {
+      "name": "mob_died",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mob_died"
+    },
+    {
+      "name": "use_mob",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_use_mob"
     }
   ]
 }
