@@ -6947,6 +6947,9 @@ impl Game<'_> {
         } else {
             Input::Pickup
         };
+        if (500..=504).contains(&internal) && self.native_screen_slots().is_some() {
+            return self.remote_worn_click(internal, right, input);
+        }
         if self.screen == Screen::Creative {
             // CreativeModeInventoryScreen.slotClicked: the Survival Inventory tab clicks the
             // player's own InventoryMenu, and its CreativeInventoryListener sends each slot that
@@ -6956,6 +6959,25 @@ impl Game<'_> {
             return;
         }
         self.remote_menu_ops(&[(Some(internal), i32::from(right), input)]);
+    }
+    /// A click on a worn slot (armor, off hand) of a mod's screen: the menu has none, so it goes
+    /// to the player's own inventory menu (window 0), which a Horizon server answers while another
+    /// menu is open. The server answers with the slots and the carried stack as they are.
+    fn remote_worn_click(&mut self, internal: usize, right: bool, input: Input) {
+        let Some(slot) = Self::menu_slot_index("inventory", internal) else {
+            return;
+        };
+        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
+        let carried = self.to_network(&self.carried).map(|s| Hashed::of(&s));
+        self.send(S::ContainerClick(play::ContainerClick {
+            container: 0,
+            state,
+            slot: slot as i16,
+            button: i8::from(right),
+            input: input_ordinal(input) as _,
+            changed: Vec::new(),
+            carried,
+        }));
     }
     /// `AbstractContainerMenu.setItem`/`initializeContents`: the state id a
     /// click answers with is the open menu's, not another window's.

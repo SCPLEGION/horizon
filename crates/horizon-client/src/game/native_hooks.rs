@@ -7,6 +7,7 @@
 //! WebAssembly mod of the same id kept them.
 //!
 //! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
+//! API 42 adds `NativeScreen::armor` and `offhand`: the player's worn slots on a mod screen (Mekanism's armor sidebar).
 //! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
 //! API 39 adds `native_fill_quad`: a four-cornered shape in one colour (a mod's lightning).
 //! API 38 adds `native_slot_rules`: what each slot of a mod screen's menu takes (an energy slot, an output slot).
@@ -172,7 +173,7 @@ pub struct NativeWorldBox {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 41;
+pub(crate) const NATIVE_HOOKS_API: u32 = 42;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -271,6 +272,12 @@ pub struct NativeScreen {
     /// A second layout the screen swaps to while `native_screen_alt` says so (Mekanism's
     /// frequency selector is a screen of another size). API 36.
     pub alt: Option<Box<NativeScreen>>,
+    /// Where the player's four armor slots sit, head first and 18 down each: Mekanism's tanks,
+    /// energy cubes and modification station have them (`addArmorSlots`). They are the player's
+    /// own, worn pieces, not the menu's. API 42.
+    pub armor: Option<[f32; 2]>,
+    /// The off-hand slot, with the armor slots (`OffhandSlot`). API 42.
+    pub offhand: Option<[f32; 2]>,
 }
 
 /// The mod screen open on this client: the block it is for, the key its
@@ -1948,6 +1955,32 @@ impl Game<'_> {
                 .map(|(i, _)| 300 + i)
                 .collect(),
         )
+    }
+    /// The player's worn slots the open mod screen shows (armor 500.., the off hand 504).
+    pub(super) fn native_screen_worn_slots(&self) -> Vec<usize> {
+        let Some(s) = self.shown_native_screen() else {
+            return Vec::new();
+        };
+        let layout = self.layout_of(s);
+        let mut v = Vec::new();
+        if layout.armor.is_some() {
+            v.extend(500..504);
+        }
+        if layout.offhand.is_some() {
+            v.push(504);
+        }
+        v
+    }
+    /// Where the open mod screen puts worn slot `slot` (500..504 armor, 504 the off hand).
+    pub(super) fn native_screen_armor_slot(&self, slot: usize) -> Option<(f32, f32)> {
+        let s = self.shown_native_screen()?;
+        let layout = self.layout_of(s);
+        if slot == 504 {
+            return layout.offhand.map(|p| (p[0], p[1]));
+        }
+        layout
+            .armor
+            .map(|p| (p[0], p[1] + (slot - 500) as f32 * 18.0))
     }
     /// The first row of the player's inventory on the open mod screen.
     pub(super) fn native_screen_inventory_y(&self) -> Option<f32> {
