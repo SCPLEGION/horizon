@@ -768,6 +768,8 @@ pub fn anger_left(anger_end: i64, game_time: i64) -> i32 {
 /// Species-specific persistent state (variants, colours, taming, ageing...).
 #[derive(Clone, Debug, Default)]
 pub struct Extra {
+    /// A native mod's data on this mob (`mod_data` in its saved NBT). API 46.
+    pub mod_data: Option<horizon_world::nbt::Compound>,
     /// A player's or mannequin's `minecraft:scale`, which scales the whole model
     /// (`LivingEntityRenderState.scale`): the local player's own, and on a
     /// server the others' from their attribute updates; 0 is the default, 1.
@@ -2842,6 +2844,27 @@ impl EntityModelDocument {
 
 /// Load one baked model layer from `entity-models.json` (e.g. `minecraft:chest#main`).
 /// Batch loaders should share an `EntityModelDocument` instead.
+/// The vanilla type each mob type of a native mod is sent as: networking and clients know only the
+/// registry's types, so a mod's mob appears to them as its base until the mod's own client draws it. API 46.
+static MOD_MOB_BASES: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// Declares that mob type `id` (added by a mod) is sent as `base`.
+pub fn register_mod_mob_base(id: &str, base: &str) {
+    let mut bases = MOD_MOB_BASES.lock().unwrap_or_else(|e| e.into_inner());
+    if !bases.iter().any(|(i, _)| i == id) {
+        bases.push((id.to_owned(), base.to_owned()));
+    }
+}
+
+/// The type networking sends for mob type `id`: its base if a mod added it, else itself.
+pub fn network_kind(id: &str) -> String {
+    let bases = MOD_MOB_BASES.lock().unwrap_or_else(|e| e.into_inner());
+    bases
+        .iter()
+        .find(|(i, _)| i == id)
+        .map_or_else(|| id.to_owned(), |(_, base)| base.clone())
+}
+
 pub fn load_model(root: &Path, key: &str) -> Option<Part> {
     EntityModelDocument::load(root).ok()?.model(key)
 }

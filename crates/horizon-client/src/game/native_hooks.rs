@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 46 adds `native_mob_types` (mob types of a mod's own, networked as a vanilla base), `native_mobs_tick`, `native_mob_died`, `native_use_mob`, `native_mob_ids`, `native_with_mob` and `Extra::mod_data`, saved with the mob (Mekanism's Robit).
 //! API 45 adds `native_keep_chunks`: a mod keeps chunks loaded and ticking for as long as it asks (Mekanism's dimensional stabilizer and anchor upgrade).
 //! API 44 adds `native_open_ui` and `native_ui_draw`, `native_ui_click`, `native_ui_key`, `native_ui_wheel`, `native_ui_closed`: a screen of a mod's own, tied to no block (Mekanism's module tweaker and radial selector).
 //! API 43 adds `native_set_block`, `native_block_redirect` and `native_block_removed`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
@@ -880,6 +881,32 @@ impl Game<'_> {
         self.native_screen_wheel(&block, at, steps, &mut taken);
         taken
     }
+    /// The mob types are loaded: a mod adds its own to `types` (a clone of a vanilla type with another
+    /// `id`, size, health or speed) and declares it with `horizon_client::mobs::register_mod_mob_base(id, base)`;
+    /// networking sends it as `base`. `/summon` and the saved entities find it by `id`. API 46.
+    pub(super) fn native_mob_types(
+        types: &mut std::collections::HashMap<String, horizon_client::mobs::MobType>,
+    ) {
+        let _ = types;
+    }
+    /// Every tick on a level (client and server alike), after its mobs ticked: a mod steers the mobs of
+    /// its own types (`native_mob_ids`, `native_with_mob`). API 46.
+    pub(super) fn native_mobs_tick(&mut self) {}
+    /// A mob of `kind` died at `at` (before its loot drops), carrying the mod's `data` if any. API 46.
+    pub(super) fn native_mob_died(
+        &mut self,
+        kind: &str,
+        at: [f64; 3],
+        data: Option<&horizon_world::nbt::Compound>,
+    ) {
+        let _ = (kind, at, data);
+    }
+    /// The player right clicked mob `id` on a window that is a client (a server's player, or the single
+    /// player's window): set `claimed` to take the click. The mob is the base type to this client;
+    /// the mod knows its own by id. API 46.
+    pub(super) fn native_use_mob(&mut self, id: u32, claimed: &mut bool) {
+        let _ = (id, claimed);
+    }
     /// The mod's own screen `id` (opened by `native_open_ui`) is drawn: fill the
     /// whole window (`batch.width` by `batch.height`, GUI pixels) with `native_fill`,
     /// `native_sprite`, `native_text`. The cursor is `native_cursor`. API 44.
@@ -1657,6 +1684,22 @@ impl Game<'_> {
         wanted: &dyn Fn(&ItemStack) -> bool,
     ) -> Option<ItemStack> {
         self.extract_from_container_where((pos[0], pos[1], pos[2]), face, max, wanted)
+    }
+    /// The ids of the living mobs of type `kind` in the level in place. API 46.
+    pub(super) fn native_mob_ids(&self, kind: &str) -> Vec<u32> {
+        self.mobs
+            .iter()
+            .filter(|m| !m.removed && m.kind.id == kind)
+            .map(|m| m.id)
+            .collect()
+    }
+    /// Runs `f` on mob `id` of the level in place (its position, motion, yaw, health, `extra.mod_data`...). API 46.
+    pub(super) fn native_with_mob<R>(
+        &mut self,
+        id: u32,
+        f: impl FnOnce(&mut horizon_client::mobs::Mob) -> R,
+    ) -> Option<R> {
+        self.mobs.iter_mut().find(|m| m.id == id && !m.removed).map(f)
     }
     /// Where the mouse is, in GUI pixels. API 20.
     pub(super) fn native_cursor(&self) -> [f32; 2] {

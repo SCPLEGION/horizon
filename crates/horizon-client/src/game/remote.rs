@@ -5658,6 +5658,13 @@ impl Game<'_> {
             && self.before_block(distance)
         {
             let id = self.mobs[i].id as i32;
+            // Native mods: a mob of their own takes the click (opens its screen).
+            let mut claimed = false;
+            self.native_use_mob(id as u32, &mut claimed);
+            if claimed {
+                self.with_hand(hand, Game::swing_arm);
+                return true;
+            }
             self.send(S::Interact(play::Interact {
                 id,
                 hand: hand_id(hand),
