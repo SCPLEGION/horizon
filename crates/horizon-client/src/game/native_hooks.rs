@@ -240,6 +240,9 @@ pub struct NativeWorldModel {
     pub full_bright: bool,
     /// Size factor of the whole model about `position` (1 for none).
     pub scale: f32,
+    /// Parts to turn (their x, y and z rotations in radians), by the name the part tree gives them: a chest's
+    /// lid. API 48.
+    pub parts: Vec<(String, [f32; 3])>,
 }
 
 /// The hook points' API version. The launcher reads this line from the
@@ -961,7 +964,12 @@ impl Game<'_> {
             let base = glam::Mat4::from_translation(rel.as_vec3())
                 * glam::Mat4::from_quat(turn)
                 * glam::Mat4::from_scale(glam::Vec3::splat(m.scale));
-            let poses = horizon_client::mobs::anim::Poses::new(part);
+            let mut poses = horizon_client::mobs::anim::Poses::new(part);
+            for (name, [x, y, z]) in &m.parts {
+                poses.xrot(name, *x);
+                poses.yrot(name, *y);
+                poses.zrot(name, *z);
+            }
             horizon_client::mobs::render::draw(
                 part,
                 base,

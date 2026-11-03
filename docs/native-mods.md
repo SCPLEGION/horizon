@@ -224,7 +224,7 @@ API 47 adds `native_world_items(items)` (`NativeWorldItem { item, matrix, light_
 contents or a liquifier's food), `native_world_texts(texts)` (`NativeWorldText { text, matrix, x, y, color, light_at }`: a line of text in font pixels, y down, like a sign's) and
 `native_face_sturdy(pos, face)` (`canOcclude` and a full sturdy face). Matrices are column major, in world space. Bundles that use them need `"hooks": 47`.
 
-API 48 adds `native_mob_hidden(id, kind, hidden)` (the game leaves a mob undrawn because the mod draws it) and `native_mob_pose(id)` (its interpolated position, body yaw, head yaw and pitch); Mekanism's Robit is drawn so, as a part tree under `native_world_models`.
+API 48 adds `native_mob_hidden(id, kind, hidden)` (the game leaves a mob undrawn because the mod draws it) and `native_mob_pose(id)` (its interpolated position, body yaw, head yaw and pitch); Mekanism's Robit is drawn so, as a part tree under `native_world_models`. API 48 also gives `NativeWorldModel` a `parts` list (the x, y and z rotations of parts by name) and lets a world model's JSON be `{"vanilla": "minecraft:chest#main", "offset": [x, y, z]}`: the part tree of a vanilla entity model under the mod's texture (Mekanism's Personal Chest lid).
 
 API 47 also adds `native_world_quads(quads)` (`NativeWorldQuad { corners, color, sprite, uv }`: a flat full bright quad in world space, drawn from both sides, tinted, with a GUI-atlas sprite or the plain
 colour: lightning bolts, billboarding effects) and `native_camera_axes()` (the camera's right and up directions, for a billboard). Bundles that use them need `"hooks": 47`.

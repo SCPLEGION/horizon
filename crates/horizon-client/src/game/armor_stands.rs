@@ -101,10 +101,30 @@ impl ArmorStandAssets {
                         .ok()
                         .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
                     {
+                        // `"vanilla": "minecraft:chest#main"` takes the part tree of a vanilla entity model (the
+                        // mod gives the texture); `"offset": [x, y, z]` (pixels) moves its root. API 48.
+                        let part = match json["vanilla"].as_str() {
+                            Some(key) => {
+                                let Some(mut part) = load(key) else {
+                                    continue;
+                                };
+                                for (i, v) in json["offset"]
+                                    .as_array()
+                                    .into_iter()
+                                    .flatten()
+                                    .take(3)
+                                    .enumerate()
+                                {
+                                    part.pose[i] += v.as_f64().unwrap_or(0.0) as f32;
+                                }
+                                part
+                            }
+                            None => Part::from_json("horizon_world", &json),
+                        };
                         world_models.insert(
                             format!("{namespace}:{name}"),
                             (
-                                Part::from_json("horizon_world", &json),
+                                part,
                                 format!("{namespace}:entity/equipment/horizon_models/{name}"),
                             ),
                         );
