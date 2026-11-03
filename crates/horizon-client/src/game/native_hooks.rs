@@ -220,6 +220,8 @@ pub struct NativeWorldModel {
     pub rotation: Option<[f32; 4]>,
     /// Drawn at full brightness whatever the light at `light_at`.
     pub full_bright: bool,
+    /// Size factor of the whole model about `position` (1 for none).
+    pub scale: f32,
 }
 
 /// The hook points' API version. The launcher reads this line from the
@@ -885,7 +887,9 @@ impl Game<'_> {
                     m.roll.to_radians(),
                 ),
             };
-            let base = glam::Mat4::from_translation(rel.as_vec3()) * glam::Mat4::from_quat(turn);
+            let base = glam::Mat4::from_translation(rel.as_vec3())
+                * glam::Mat4::from_quat(turn)
+                * glam::Mat4::from_scale(glam::Vec3::splat(m.scale));
             let poses = horizon_client::mobs::anim::Poses::new(part);
             horizon_client::mobs::render::draw(
                 part,
