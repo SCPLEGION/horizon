@@ -240,3 +240,12 @@ Horizon's own mods are native. They live in
 The game keeps the parts that must be fast, such as drawing the minimap's map, and a native mod picks the options
 ([extras.md](extras.md)). Far View is not a mod any more: its distance and detail are Graphics > LOD Distance and Far
 Detail ([graphics.md](graphics.md)).
+
+### Models on the wearer (`layers.horizon_models`)
+
+An equipment asset (`assets/<ns>/equipment/<item>.json`, named by the item's `minecraft:equippable` `asset_id`) can draw a mod's own
+models on the wearer: `"layers": { "horizon_models": [ { "model": "<ns>:<name>", "texture": "<ns>:<name>", "hide_with": ["<ns>:<item>"] } ] }`.
+`model` is an entity-model part tree in `assets/<ns>/horizon/worn_models/<name>.json` whose children are named for the wearer's parts
+(`head`, `body`, `left_arm`, `right_arm`, `left_leg`, `right_leg`), with polygons in pixels relative to each part; `texture` is
+`textures/entity/equipment/horizon_models/<name>.png`. `hide_with` (optional) leaves the layer out while any of those items is worn too
+(parts that show only without the neighbouring armour piece).

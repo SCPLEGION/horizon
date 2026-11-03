@@ -215,9 +215,17 @@ API 43 adds `native_block_redirect(pos, state, to)`: before a right click or a b
 position instead (Mekanism's bounding blocks send a click on a filler cell to the machine that owns it). API 43 also adds `native_set_block(pos, block, properties)`: sets a block (`Level.setBlock` with `UPDATE_ALL`; `minecraft:air` removes), which a multi-cell
 machine uses to fill and clear its other cells. API 43 also adds `native_block_removed(pos, old, old_properties, new)`: after any change of a block into another (a player, an explosion, a piston,
 a command), with the block it was; unlike `native_block_changed` it runs once the change is done, so the mod may set blocks (a machine clearing
-its other cells). API 43 also adds `native_world_models(models)`: a mod pushes `NativeWorldModel { model, position, yaw, pitch, roll, light_at }` for a part tree
+its other cells). API 43 also gives `NativeWorldBox` a `sprite` (a GUI-atlas sprite such as `block/water_still`, one tile per block, tinted by the face colours: a tank's fluid).
+API 43 also adds `native_world_models(models)`: a mod pushes `NativeWorldModel { model, position, yaw, pitch, roll, light_at, color, rotation, full_bright, scale }` for a part tree
 in `assets/<ns>/horizon/world_models/<name>.json` (pixels, y up) textured from `textures/entity/equipment/horizon_models/<name>.png`, and the game
 draws it each frame (a wind generator's spinning rotor). Bundles that use any of these need `"hooks": 43`.
+
+API 47 adds `native_world_items(items)` (`NativeWorldItem { item, matrix, light_at, seed, ground }`: an item in its GUI or ground form under a world-space matrix, a bin's
+contents or a liquifier's food), `native_world_texts(texts)` (`NativeWorldText { text, matrix, x, y, color, light_at }`: a line of text in font pixels, y down, like a sign's) and
+`native_face_sturdy(pos, face)` (`canOcclude` and a full sturdy face). Matrices are column major, in world space. Bundles that use them need `"hooks": 47`.
+
+API 47 also adds `native_world_quads(quads)` (`NativeWorldQuad { corners, color, sprite, uv }`: a flat full bright quad in world space, drawn from both sides, tinted, with a GUI-atlas sprite or the plain
+colour: lightning bolts, billboarding effects) and `native_camera_axes()` (the camera's right and up directions, for a billboard). Bundles that use them need `"hooks": 47`.
 
 API 42 adds `NativeScreen { armor, offhand }`: where the screen shows the player's four armor slots (head first, 18 px apart down) and the off hand slot
 (`addArmorSlots`). They are the player's own worn slots; clicks go to the inventory menu (window 0) of a Horizon server. Bundles that use it need `"hooks": 42`.
