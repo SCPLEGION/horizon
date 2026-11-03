@@ -55,6 +55,57 @@ impl Game<'_> {
         let at = self.native_cursor();
         self.native_ui_click(&id, at, code, pressed);
     }
+    /// Draws the mod's world model `model` (`native_world_models`) into the GUI: turned `yaw` degrees about
+    /// its vertical axis, tilted a little to be seen from above, `size` GUI pixels to the block, centred in
+    /// `clip` (`[x0, y0, x1, y1]`, which also cuts it off), the model `height` blocks tall. `texture` is the
+    /// atlas sprite to wear in place of the model's own (a skin); a missing one falls back to it. False when
+    /// there is no such model. API 49.
+    pub(super) fn native_gui_model(
+        &self,
+        batch: &mut HudBatch,
+        model: &str,
+        texture: Option<&str>,
+        clip: [f32; 4],
+        size: f32,
+        height: f32,
+        yaw: f32,
+    ) -> bool {
+        let Some((part, own)) = self.armor_stand_assets.world_models.get(model) else {
+            return false;
+        };
+        let sprites = &self.gui.atlas.sprites;
+        let sprite = texture
+            .filter(|t| sprites.contains_key(*t))
+            .unwrap_or(own.as_str());
+        let Some(r) = sprites.get(sprite) else {
+            return false;
+        };
+        let mut verts = Vec::new();
+        horizon_client::mobs::render::draw(
+            part,
+            glam::Mat4::from_rotation_y(yaw.to_radians()),
+            &horizon_client::mobs::anim::Poses::new(part),
+            [r.u0, r.v0, r.u1, r.v1],
+            u32::MAX,
+            240 | 240 << 8,
+            0,
+            &mut verts,
+        );
+        let (cx, cy) = ((clip[0] + clip[2]) / 2.0, (clip[1] + clip[3]) / 2.0);
+        // As the inventory's player box: Rz(pi) * Rx(tilt) under the box centre and a scale with z flipped.
+        let gui = glam::Mat4::from_translation(glam::Vec3::new(cx, cy, 0.0))
+            * glam::Mat4::from_scale(glam::Vec3::new(size, size, -size))
+            * glam::Mat4::from_translation(glam::Vec3::new(0.0, height / 2.0, 0.0))
+            * glam::Mat4::from_rotation_z(std::f32::consts::PI)
+            * glam::Mat4::from_rotation_x(15f32.to_radians());
+        let quads = super::perspective::player_preview_quads(verts, gui, None, sprites);
+        let start = batch.vertices.len();
+        for (_, p, uv, color) in quads {
+            batch.quad_3d(p, uv, color);
+        }
+        batch.depth_since(start, clip);
+        true
+    }
     pub(super) fn native_ui_wheel_event(&mut self, steps: f32) {
         if let Some(id) = self.mod_ui.clone() {
             self.native_ui_wheel(&id, steps);
