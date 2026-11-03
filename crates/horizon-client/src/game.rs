@@ -1866,6 +1866,8 @@ struct Game<'a> {
     level: Level,
     session_lock: Option<horizon_client::save::SessionLock>,
     audio: Audio,
+    /// The looping sounds mods keep alive (`native_loop_sound`): key, handle, when it was last refreshed.
+    native_loops: HashMap<String, (horizon_client::sound_engine::InstanceId, Instant)>,
     music: horizon_client::music::MusicManager,
     ambience: horizon_client::ambience::Ambience,
     /// The sound engine was told the game paused (pauseAllExcept).
@@ -15419,6 +15421,7 @@ impl<'a> Game<'a> {
             level,
             session_lock: None,
             audio,
+            native_loops: HashMap::new(),
             music: {
                 // The manager starts with the saved option (MusicManager's constructor).
                 let mut music = horizon_client::music::MusicManager::default();

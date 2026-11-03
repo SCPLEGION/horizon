@@ -226,6 +226,8 @@ contents or a liquifier's food), `native_world_texts(texts)` (`NativeWorldText {
 
 API 50 adds a mod item's continuous use: `native_use_item` claims the click and calls `native_start_using`, then `native_using_tick(stack, ticks, claimed, keep)` runs each tick the use key is held (set `claimed`, and `keep` to go on). `native_clip(from, to)` finds the first block on a segment and `native_eye()` is the player's eyes (Mekanism's Flamethrower).
 
+API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
+
 API 49 adds `native_gui_model(batch, model, texture, clip, size, height, yaw)`: a mod's world model (`native_world_models`) drawn in a GUI as the inventory draws the player, turned `yaw` degrees, tilted to be seen from above, wearing another atlas sprite as its skin (Mekanism's Robit skin preview). Call it from `native_ui_draw` or a block screen's draw.
 
 API 48 adds `native_mob_hidden(id, kind, hidden)` (the game leaves a mob undrawn because the mod draws it) and `native_mob_pose(id)` (its interpolated position, body yaw, head yaw and pitch); Mekanism's Robit is drawn so, as a part tree under `native_world_models`. API 48 also gives `NativeWorldModel` a `parts` list (the x, y and z rotations of parts by name) and lets a world model's JSON be `{"vanilla": "minecraft:chest#main", "offset": [x, y, z]}`: the part tree of a vanilla entity model under the mod's texture (Mekanism's Personal Chest lid).

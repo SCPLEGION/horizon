@@ -65,6 +65,7 @@ impl Game<'_> {
             ridden,
         };
         self.audio.tick(self.pause, &ctx);
+        self.sweep_native_loops();
     }
     /// `Minecraft.setLevel` -> `updateLevelInEngines`: `SoundManager.stop()`.
     /// The music manager keeps its stopped track and, on its next tick, waits
@@ -72,6 +73,7 @@ impl Game<'_> {
     pub(super) fn stop_sounds_for_new_level(&mut self) {
         self.ambience.clear(&mut self.audio);
         self.audio.stop_all();
+        self.native_loops.clear();
     }
     /// `getSituationalMusic` and `getMusicVolume`.
     pub(super) fn situational_music(&self) -> (Option<Music>, f32) {
