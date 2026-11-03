@@ -211,7 +211,8 @@ API 43 adds `native_block_redirect(pos, state, to)`: before a right click or a b
 position instead (Mekanism's bounding blocks send a click on a filler cell to the machine that owns it). API 43 also adds `native_set_block(pos, block, properties)`: sets a block (`Level.setBlock` with `UPDATE_ALL`; `minecraft:air` removes), which a multi-cell
 machine uses to fill and clear its other cells. API 43 also adds `native_block_removed(pos, old, old_properties, new)`: after any change of a block into another (a player, an explosion, a piston,
 a command), with the block it was; unlike `native_block_changed` it runs once the change is done, so the mod may set blocks (a machine clearing
-its other cells). API 43 also adds `native_world_models(models)`: a mod pushes `NativeWorldModel { model, position, yaw, pitch, roll, light_at }` for a part tree
+its other cells). API 43 also gives `NativeWorldBox` a `sprite` (a GUI-atlas sprite such as `block/water_still`, one tile per block, tinted by the face colours: a tank's fluid).
+API 43 also adds `native_world_models(models)`: a mod pushes `NativeWorldModel { model, position, yaw, pitch, roll, light_at }` for a part tree
 in `assets/<ns>/horizon/world_models/<name>.json` (pixels, y up) textured from `textures/entity/equipment/horizon_models/<name>.png`, and the game
 draws it each frame (a wind generator's spinning rotor). Bundles that use any of these need `"hooks": 43`.
 

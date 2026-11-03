@@ -169,6 +169,9 @@ pub struct NativeWorldBox {
     pub min: [f64; 3],
     pub max: [f64; 3],
     pub colors: [u32; 6],
+    /// A sprite of the GUI atlas (`block/water_still`, a content mod's `<ns>:gui/...`) laid over every face, one
+    /// tile per block as `RenderResizableCuboid` does a fluid; none for the plain colour. API 43.
+    pub sprite: Option<String>,
 }
 
 /// A model a mod draws in the world (`native_world_models`): `model` is `<ns>:<name>` of a part tree in
@@ -788,6 +791,14 @@ impl Game<'_> {
         let white = self.gui.atlas.font.white();
         let uv = horizon_client::gfx::lightning::white_uv(&white);
         for b in &boxes {
+            if let Some(rect) = b
+                .sprite
+                .as_deref()
+                .and_then(|name| self.gui.atlas.sprites.get(name))
+            {
+                sprite_box(b, [rect.u0, rect.v0, rect.u1, rect.v1], camera, out);
+                continue;
+            }
             let lo: [f32; 3] = std::array::from_fn(|i| (b.min[i] - camera[i]) as f32);
             let hi: [f32; 3] = std::array::from_fn(|i| (b.max[i] - camera[i]) as f32);
             let at = |x: bool, y: bool, z: bool| {
@@ -2648,5 +2659,65 @@ mod tests {
         assert!(debug_takes(Corner::BottomLeft, true, [true, false]));
         assert!(!debug_takes(Corner::BottomRight, true, [true, false]));
         assert!(debug_takes(Corner::BottomRight, true, [false, true]));
+    }
+}
+
+/// A [`NativeWorldBox`] with a sprite: each face in tiles of one block, the tile's part of the sprite on it.
+fn sprite_box(
+    b: &NativeWorldBox,
+    rect: [f32; 4],
+    camera: glam::DVec3,
+    out: &mut Vec<horizon_client::mesher::Vertex>,
+) {
+    // Per face (east, west, up, down, south, north): the fixed axis and which end of it, the axes the sprite's
+    // u and v run along, and whether v runs against the axis (the sprite's top is the face's top).
+    const FACES: [(usize, bool, usize, usize, bool); 6] = [
+        (0, true, 2, 1, true),
+        (0, false, 2, 1, true),
+        (1, true, 0, 2, false),
+        (1, false, 0, 2, false),
+        (2, true, 0, 1, true),
+        (2, false, 0, 1, true),
+    ];
+    for (face, (axis, high, ua, va, flip_v)) in FACES.into_iter().enumerate() {
+        let [a, r, g, bl] = b.colors[face].to_be_bytes();
+        let color = u32::from(a) << 24 | u32::from(bl) << 16 | u32::from(g) << 8 | u32::from(r);
+        let fixed = if high { b.max[axis] } else { b.min[axis] };
+        let (mut u, u_end) = (b.min[ua], b.max[ua]);
+        while u < u_end - 1e-9 {
+            let u1 = (u.floor() + 1.0).min(u_end);
+            let mut v = b.min[va];
+            while v < b.max[va] - 1e-9 {
+                let v1 = (v.floor() + 1.0).min(b.max[va]);
+                let (ou, ov) = (u.floor(), v.floor());
+                // The four corners: (u, v), (u, v1), (u1, v1), (u1, v), as seen from outside.
+                let mut corners = [(u, v), (u, v1), (u1, v1), (u1, v)];
+                if high != (axis != 1) {
+                    corners.reverse();
+                }
+                for (cu, cv) in corners {
+                    let mut p = [0.0; 3];
+                    p[axis] = fixed;
+                    p[ua] = cu;
+                    p[va] = cv;
+                    let tu = (cu - ou) as f32;
+                    let tv = if flip_v { 1.0 - (cv - ov) as f32 } else { (cv - ov) as f32 };
+                    out.push(horizon_client::mesher::Vertex {
+                        pos: std::array::from_fn(|i| (p[i] - camera[i]) as f32),
+                        uv: [
+                            rect[0] + (rect[2] - rect[0]) * tu,
+                            rect[1] + (rect[3] - rect[1]) * tv,
+                        ],
+                        layer: horizon_client::gfx::TRANSLUCENT_ITEM_OVERLAY,
+                        color,
+                        light: 240 | 240 << 8,
+                        normal: [0; 4],
+                        glint_uv: [0.0, 0.0],
+                    });
+                }
+                v = v1;
+            }
+            u = u1;
+        }
     }
 }
