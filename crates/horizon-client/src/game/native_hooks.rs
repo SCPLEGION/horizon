@@ -776,13 +776,6 @@ impl Game<'_> {
     pub(super) fn native_world_texts(&self, texts: &mut Vec<NativeWorldText>) {
         let _ = texts;
     }
-    /// Whether the side `face` of the block at `pos` is full and sturdy
-    /// (`canOcclude` and `isFaceSturdy(.., FULL)`, a bin's cover test). API 44.
-    pub(super) fn native_face_sturdy(&self, pos: [i32; 3], face: Direction) -> bool {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        let facts = self.res.facts().get(state);
-        facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
-    }
     /// The vertices of the mods' world items and texts, camera relative, appended to the entity quads.
     pub(super) fn world_item_geometry(
         &self,
@@ -1728,6 +1721,13 @@ impl Game<'_> {
             .properties
             .get(key)
             .cloned()
+    }
+    /// Whether the side `face` of the block at `pos` is full and sturdy
+    /// (`canOcclude` and `isFaceSturdy(.., FULL)`, a bin's cover test). API 44.
+    pub(super) fn native_face_sturdy(&self, pos: [i32; 3], face: Direction) -> bool {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let facts = self.res.facts().get(state);
+        facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
     }
     /// Puts `stack` into the container at `pos` (a chest, a furnace, a mod
     /// container) through its side `face`, as a hopper would, and returns
