@@ -180,6 +180,10 @@ page, a mod's follow, ten to a page, and `<` `>` buttons above the screen turn p
 when a mod added tabs). The title is a language key or plain text; the stacks also join the search tab. Client-side.
 Bundles that use it need `"hooks": 34`.
 
+API 35 adds `native_mouse_down()`: whether the left mouse button is down. `native_screen_click` sees only the press, so a mod
+that lets the player drag a window of its own (as Mekanism's GUI windows move) follows `native_cursor()` while it holds.
+Bundles that use it need `"hooks": 35`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
