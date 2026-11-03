@@ -2604,6 +2604,13 @@ impl Game<'_> {
                 .motion
                 .as_ref()
                 .map_or(0.0, |m| m.damage_absorbed);
+            self.as_guest(host, conn, |g| {
+                let mut immune = Vec::new();
+                g.native_player_immunities(&mut immune);
+                if let Some(p) = g.player.as_mut() {
+                    p.damage_immune = immune;
+                }
+            });
             if absorbed > 0.0 || self.world.game_time % 10 == 0 {
                 self.as_guest(host, conn, |g| {
                     if let Some(p) = g.player.as_mut() {

@@ -7,6 +7,7 @@
 //! WebAssembly mod of the same id kept them.
 //!
 //! API 50 adds a mod item's continuous use (`native_using_tick`, `native_start_using`) and `native_clip`/`native_eye`: a ray through the world's blocks and the eyes of the player (Mekanism's Flamethrower).
+//! API 52 adds `native_player_immunities`: damage types a player takes none of (Mekanism's Gas Mask).
 //! API 51 adds looping sounds (`native_loop_sound`, `native_stop_loop_sound`): a loop kept alive by calling it each tick (Mekanism's Industrial Alarm and Flamethrower).
 //!
 //! API 49 adds `native_gui_model`: a mod's world model drawn turning in a GUI (Mekanism's Robit skin previews).
@@ -252,7 +253,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 51;
+pub(crate) const NATIVE_HOOKS_API: u32 = 52;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1354,6 +1355,12 @@ impl Game<'_> {
     /// player of the world. API 28.
     pub(super) fn native_player_damage(&mut self, absorbed: f32, share: &mut f32) {
         let _ = (absorbed, share);
+    }
+    /// The damage a player takes none of, asked every tick with the player's state swapped in: push damage type
+    /// ids (`minecraft:magic`) or tags with a leading `#` (`#minecraft:is_fire`) (a gas mask against magic damage).
+    /// Server-side, for every player of the world. API 52.
+    pub(super) fn native_player_immunities(&mut self, immune: &mut Vec<String>) {
+        let _ = immune;
     }
     /// A player uses `stack` (right click) with `self.hand` on the block at
     /// `pos`, `face` the face clicked (`[0, 1, 0]` is the top), once the
