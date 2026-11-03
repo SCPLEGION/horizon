@@ -7,6 +7,7 @@
 //! WebAssembly mod of the same id kept them.
 //!
 //! API 50 adds a mod item's continuous use (`native_using_tick`, `native_start_using`) and `native_clip`/`native_eye`: a ray through the world's blocks and the eyes of the player (Mekanism's Flamethrower).
+//! API 51 adds looping sounds (`native_loop_sound`, `native_stop_loop_sound`): a loop kept alive by calling it each tick (Mekanism's Industrial Alarm and Flamethrower).
 //!
 //! API 49 adds `native_gui_model`: a mod's world model drawn turning in a GUI (Mekanism's Robit skin previews).
 //! API 46 adds `native_mob_types` (mob types of a mod's own, networked as a vanilla base), `native_mobs_tick`, `native_mob_died`, `native_use_mob`, `native_mob_ids`, `native_with_mob` and `Extra::mod_data`, saved with the mob (Mekanism's Robit).
@@ -165,7 +166,7 @@ use horizon_world::{
     nbt::Compound,
     registry::BlockStateId,
 };
-use std::{fs, path::PathBuf, sync::Arc, time::Duration};
+use std::{fs, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// An item a mod wants drawn in the world, in its GUI form (a bin's contents). API 47.
@@ -251,7 +252,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 50;
+pub(crate) const NATIVE_HOOKS_API: u32 = 51;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1912,6 +1913,50 @@ impl Game<'_> {
     #[allow(dead_code)]
     pub(super) fn native_eye(&self) -> Option<[f64; 3]> {
         self.eye_position()
+    }
+    /// Keeps a looping sound going: `key` names it, `event` is a sound event (`mekanism:tile.machine.industrial_alarm`),
+    /// `at` its place in the world (`None`: heard everywhere, unattenuated). Call it every tick or frame it should
+    /// sound; it stops a quarter second after the last call, or when `native_stop_loop_sound` is called. The first
+    /// call for a key starts it; later calls keep it (position and volume of the first call stay). API 51.
+    #[allow(dead_code)]
+    pub(super) fn native_loop_sound(
+        &mut self,
+        key: &str,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) {
+        let now = Instant::now();
+        if let Some(entry) = self.native_loops.get_mut(key) {
+            entry.1 = now;
+            return;
+        }
+        let id = self.audio.play_loop(event, at, volume, pitch);
+        self.native_loops.insert(key.to_owned(), (id, now));
+    }
+    /// Stops the looping sound `key` now. API 51.
+    #[allow(dead_code)]
+    pub(super) fn native_stop_loop_sound(&mut self, key: &str) {
+        if let Some((id, _)) = self.native_loops.remove(key) {
+            self.audio.stop_and_release(id);
+        }
+    }
+    /// Stops the loops nobody has refreshed lately (run every game tick).
+    pub(super) fn sweep_native_loops(&mut self) {
+        if self.native_loops.is_empty() {
+            return;
+        }
+        let now = Instant::now();
+        let stale: Vec<String> = self
+            .native_loops
+            .iter()
+            .filter(|(_, (_, seen))| now.duration_since(*seen) > Duration::from_millis(250))
+            .map(|(k, _)| k.clone())
+            .collect();
+        for key in stale {
+            self.native_stop_loop_sound(&key);
+        }
     }
     /// The block id of the mod screen showing now, if any. API 48.
     #[allow(dead_code)]
