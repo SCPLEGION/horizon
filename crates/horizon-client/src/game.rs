@@ -14334,6 +14334,9 @@ impl ApplicationHandler for Game<'_> {
                     let bundle = bundles::takes_bundle_wheel(self.screen)
                         && d != 0.0
                         && self.bundle_scroll(scaled(raw_x), scaled(raw_y));
+                    if self.screen == Screen::Inventory && d != 0.0 && !bundle && self.native_screen_wheel_event(d) {
+                        return Ok(());
+                    }
                     if self.screen == Screen::Creative && d != 0.0 && !bundle {
                         self.creative_screen.wheel(f64::from(d), &self.pack.names);
                     }

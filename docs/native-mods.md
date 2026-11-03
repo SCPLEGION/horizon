@@ -200,6 +200,9 @@ Bundles that use it need `"hooks": 38`.
 API 39 adds `native_fill_quad(batch, corners, argb, additive)`: a four-cornered shape in one colour, added to what is behind it when `additive` (Mekanism's lightning in the
 Antiprotonic Nucleosynthesizer's screen). Bundles that use it need `"hooks": 39`.
 
+API 40 adds `native_screen_wheel(block, at, steps, taken)`: the mouse wheel over a mod screen goes to the mod first, which
+sets `taken` when it scrolled a list of its own (Mekanism's filter lists). Bundles that use it need `"hooks": 40`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

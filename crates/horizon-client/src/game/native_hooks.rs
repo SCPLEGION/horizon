@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 40 adds `native_screen_wheel`: a mod screen can take the mouse wheel (a scrolling list).
 //! API 39 adds `native_fill_quad`: a four-cornered shape in one colour (a mod's lightning).
 //! API 38 adds `native_slot_rules`: what each slot of a mod screen's menu takes (an energy slot, an output slot).
 //! API 37 adds `native_screen_escape`: a mod screen can take Escape (to close only a window of its own).
@@ -161,7 +162,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 39;
+pub(crate) const NATIVE_HOOKS_API: u32 = 40;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -685,6 +686,21 @@ impl Game<'_> {
         let mut consumed = false;
         self.native_screen_escape(&block, &mut consumed);
         consumed
+    }
+    /// The wheel turned `steps` (positive up) with the cursor at `at` (as in
+    /// `native_screen_click`) on block `block`'s screen: set `taken` when the
+    /// mod scrolled something of its own. API 40.
+    pub(super) fn native_screen_wheel(&mut self, block: &str, at: [f32; 2], steps: f32, taken: &mut bool) {
+        let _ = (block, at, steps, taken);
+    }
+    /// The wheel on the open mod screen: whether the mod took it.
+    pub(super) fn native_screen_wheel_event(&mut self, steps: f32) -> bool {
+        let Some((block, _, at)) = self.native_screen_at() else {
+            return false;
+        };
+        let mut taken = false;
+        self.native_screen_wheel(&block, at, steps, &mut taken);
+        taken
     }
     /// Whether block `block`'s screen shows its `NativeScreen::alt` layout now: set `alt`.
     /// Asked every frame, so keep it a flag read. API 36.
