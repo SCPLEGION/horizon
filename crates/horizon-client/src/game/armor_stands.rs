@@ -44,6 +44,10 @@ pub(super) struct ArmorStandAssets {
     /// asset id -> the models a content mod's equipment asset draws on the wearer
     /// (`layers.horizon_models`), each with its sprite.
     pub worn_models: HashMap<String, Vec<(Part, String)>>,
+    /// `<ns>:<name>` -> the model a content mod draws in the world by itself
+    /// (`assets/<ns>/horizon/world_models/<name>.json`, a part tree in pixels,
+    /// drawn as it stands) with its sprite (`textures/entity/equipment/horizon_models/<name>`).
+    pub world_models: HashMap<String, (Part, String)>,
     /// asset id -> `trim_overrides`.
     pub trim_overrides: HashMap<String, Vec<TrimOverride>>,
     pub trims: TrimRegistry,
@@ -79,10 +83,33 @@ impl ArmorStandAssets {
         let mut equipment = HashMap::new();
         let mut trim_overrides = HashMap::new();
         let mut worn_models = HashMap::new();
+        let mut world_models = HashMap::new();
         // EquipmentAssetManager reads every namespace: vanilla's and the content mods'.
         let namespaces = std::iter::once("minecraft".to_owned())
             .chain(horizon_client::mod_content::namespaces(root));
         for namespace in namespaces {
+            if let Ok(entries) =
+                std::fs::read_dir(root.join(format!("assets/{namespace}/horizon/world_models")))
+            {
+                for e in entries.flatten() {
+                    let path = e.path();
+                    let Some(name) = path.file_stem().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if let Some(json) = std::fs::read(&path)
+                        .ok()
+                        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                    {
+                        world_models.insert(
+                            format!("{namespace}:{name}"),
+                            (
+                                Part::from_json("horizon_world", &json),
+                                format!("{namespace}:entity/equipment/horizon_models/{name}"),
+                            ),
+                        );
+                    }
+                }
+            }
             let Ok(entries) = std::fs::read_dir(root.join(format!("assets/{namespace}/equipment")))
             else {
                 continue;
@@ -160,6 +187,7 @@ impl ArmorStandAssets {
             player,
             equipment,
             worn_models,
+            world_models,
             trim_overrides,
             trims: TrimRegistry::load(root),
             root: root.to_owned(),

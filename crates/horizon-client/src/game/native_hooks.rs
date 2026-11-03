@@ -171,6 +171,20 @@ pub struct NativeWorldBox {
     pub colors: [u32; 6],
 }
 
+/// A model a mod draws in the world (`native_world_models`): `model` is `<ns>:<name>` of a part tree in
+/// `assets/<ns>/horizon/world_models/<name>.json` (pixels, y up, as it stands) with its texture in
+/// `textures/entity/equipment/horizon_models/<name>.png`. It is placed at `position` (world), turned by `yaw`
+/// about y, then `pitch` about x, then `roll` about its own z (degrees), and lit as the block `light_at`.
+#[derive(Clone, Debug)]
+pub struct NativeWorldModel {
+    pub model: String,
+    pub position: [f64; 3],
+    pub yaw: f32,
+    pub pitch: f32,
+    pub roll: f32,
+    pub light_at: [i32; 3],
+}
+
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
@@ -713,6 +727,52 @@ impl Game<'_> {
     /// drawn like translucent item quads (full bright, no depth writes, seen from both sides). API 41.
     pub(super) fn native_world_boxes(&self, boxes: &mut Vec<NativeWorldBox>) {
         let _ = boxes;
+    }
+    /// Models a mod wants drawn in the world this frame: push a [`NativeWorldModel`] for each (a wind
+    /// generator's spinning rotor). API 43.
+    pub(super) fn native_world_models(&self, models: &mut Vec<NativeWorldModel>) {
+        let _ = models;
+    }
+    /// The vertices of the mods' world models, camera relative, appended to the entity quads.
+    pub(super) fn world_model_geometry(
+        &self,
+        camera: glam::DVec3,
+        out: &mut Vec<horizon_client::mesher::Vertex>,
+    ) {
+        let mut models = Vec::new();
+        self.native_world_models(&mut models);
+        for m in &models {
+            let Some((part, sprite)) = self.armor_stand_assets.world_models.get(&m.model) else {
+                continue;
+            };
+            let Some(r) = self.gui.atlas.sprites.get(sprite.as_str()) else {
+                continue;
+            };
+            let rel = glam::DVec3::from_array(m.position) - camera;
+            if rel.length_squared() > 128.0 * 128.0 {
+                continue;
+            }
+            let light = self.world.light(m.light_at[0], m.light_at[1], m.light_at[2]);
+            let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
+            let base = glam::Mat4::from_translation(rel.as_vec3())
+                * glam::Mat4::from_quat(glam::Quat::from_euler(
+                    glam::EulerRot::YXZ,
+                    m.yaw.to_radians(),
+                    m.pitch.to_radians(),
+                    m.roll.to_radians(),
+                ));
+            let poses = horizon_client::mobs::anim::Poses::new(part);
+            horizon_client::mobs::render::draw(
+                part,
+                base,
+                &poses,
+                [r.u0, r.v0, r.u1, r.v1],
+                0xFFFF_FFFF,
+                packed,
+                0,
+                out,
+            );
+        }
     }
     /// The vertices of the mods' world boxes, camera relative, appended to the entity quads.
     pub(super) fn world_box_geometry(

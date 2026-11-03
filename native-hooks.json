@@ -264,6 +264,11 @@
       "name": "block_removed",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_block_removed"
+    },
+    {
+      "name": "world_models",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_models"
     }
   ]
 }
