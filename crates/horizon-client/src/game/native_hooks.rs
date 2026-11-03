@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 37 adds `native_screen_escape`: a mod screen can take Escape (to close only a window of its own).
 //! API 36 adds `native_screen_alt` and `NativeScreen::alt`: a screen that swaps between two layouts.
 //!
 //! API 35 adds `native_mouse_down`, for windows a mod lets the player drag.
@@ -158,7 +159,7 @@ use winit::{event::MouseButton, keyboard::KeyCode};
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 36;
+pub(crate) const NATIVE_HOOKS_API: u32 = 37;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -648,6 +649,20 @@ impl Game<'_> {
     /// there either, so shift-clicks never fill it. API 19.
     pub(super) fn native_screen(&self, block: &str, screen: &mut Option<NativeScreen>) {
         let _ = (block, screen);
+    }
+    /// Escape was pressed on block `block`'s screen: set `consumed` when the mod
+    /// used it (closed a window of its own), and the screen stays open. API 37.
+    pub(super) fn native_screen_escape(&mut self, block: &str, consumed: &mut bool) {
+        let _ = (block, consumed);
+    }
+    /// Escape on the open mod screen: whether the mod took it.
+    pub(super) fn native_escape_taken(&mut self) -> bool {
+        let Some(block) = self.shown_native_screen().map(|s| s.block.clone()) else {
+            return false;
+        };
+        let mut consumed = false;
+        self.native_screen_escape(&block, &mut consumed);
+        consumed
     }
     /// Whether block `block`'s screen shows its `NativeScreen::alt` layout now: set `alt`.
     /// Asked every frame, so keep it a flag read. API 36.

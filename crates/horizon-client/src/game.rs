@@ -13459,6 +13459,7 @@ impl Game<'_> {
             return Ok(());
         }
         match key {
+            KeyCode::Escape if self.screen == Screen::Inventory && self.native_escape_taken() => {}
             KeyCode::Escape => match self.screen {
                 Screen::Options => self.options_key(KeyCode::Escape, None)?,
                 Screen::Playing => {
