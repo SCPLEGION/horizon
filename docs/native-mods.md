@@ -189,6 +189,10 @@ inventory position), and `native_screen_alt(block, alt)`, asked every frame, say
 frequency selector is a screen of its own size that its machines' screens swap to. Bundles that use it need
 `"hooks": 36`.
 
+API 37 adds `native_screen_escape(block, consumed)`: Escape on a mod screen first asks the mod, which sets `consumed` when it
+closed a window of its own (Mekanism's machine windows); the screen then stays open. Bundles that use it need
+`"hooks": 37`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads
