@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 44 adds `native_open_ui` and `native_ui_draw`, `native_ui_click`, `native_ui_key`, `native_ui_wheel`, `native_ui_closed`: a screen of a mod's own, tied to no block (Mekanism's module tweaker and radial selector).
 //! API 43 adds `native_set_block`, `native_block_redirect` and `native_block_removed`: a click or a break aimed at one block acts on another (Mekanism's bounding blocks).
 //! API 41 adds `native_world_boxes`: translucent coloured boxes drawn in the world (Mekanism's Digital Miner visuals).
 //! API 42 adds `NativeScreen::armor` and `offhand`: the player's worn slots on a mod screen (Mekanism's armor sidebar).
@@ -875,6 +876,37 @@ impl Game<'_> {
         let mut taken = false;
         self.native_screen_wheel(&block, at, steps, &mut taken);
         taken
+    }
+    /// The mod's own screen `id` (opened by `native_open_ui`) is drawn: fill the
+    /// whole window (`batch.width` by `batch.height`, GUI pixels) with `native_fill`,
+    /// `native_sprite`, `native_text`. The cursor is `native_cursor`. API 44.
+    pub(super) fn native_ui_draw(&self, id: &str, batch: &mut HudBatch) {
+        let _ = (id, batch);
+    }
+    /// A mouse button (0 left, 1 right, 2 middle or other) went down or up on
+    /// the mod's screen `id`, with the cursor at `at`. API 44.
+    pub(super) fn native_ui_click(&mut self, id: &str, at: [f32; 2], button: u8, pressed: bool) {
+        let _ = (id, at, button, pressed);
+    }
+    /// A key (`key.keyboard.*`) went down or up on the mod's screen `id`, with
+    /// the text it types (when it types any; a paste gives the clipboard).
+    /// Escape closes the screen and is not sent. API 44.
+    pub(super) fn native_ui_key(
+        &mut self,
+        id: &str,
+        key: &str,
+        text: Option<&str>,
+        pressed: bool,
+    ) {
+        let _ = (id, key, text, pressed);
+    }
+    /// The wheel turned `steps` (positive up) on the mod's screen `id`. API 44.
+    pub(super) fn native_ui_wheel(&mut self, id: &str, steps: f32) {
+        let _ = (id, steps);
+    }
+    /// The mod's screen `id` was closed (Escape, or `native_close_ui`). API 44.
+    pub(super) fn native_ui_closed(&mut self, id: &str) {
+        let _ = id;
     }
     /// Whether block `block`'s screen shows its `NativeScreen::alt` layout now: set `alt`.
     /// Asked every frame, so keep it a flag read. API 36.

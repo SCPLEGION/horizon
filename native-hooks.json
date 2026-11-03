@@ -269,6 +269,31 @@
       "name": "world_models",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_world_models"
+    },
+    {
+      "name": "ui_draw",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_draw"
+    },
+    {
+      "name": "ui_click",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_click"
+    },
+    {
+      "name": "ui_key",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_key"
+    },
+    {
+      "name": "ui_wheel",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_wheel"
+    },
+    {
+      "name": "ui_closed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_closed"
     }
   ]
 }

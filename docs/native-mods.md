@@ -207,6 +207,8 @@ API 41 adds `native_world_boxes(boxes)`: a mod pushes `NativeWorldBox { min, max
 and the game draws each as a translucent box, full bright and seen from both sides, like translucent item quads
 (Mekanism's Digital Miner visuals). Bundles that use it need `"hooks": 41`.
 
+API 44 adds mod screens tied to no block: `native_open_ui(id)` (from a client hook such as `native_key`) opens the mod's screen `id` over the game and frees the cursor; the mod draws the whole window in `native_ui_draw(id, batch)` and hears `native_ui_click(id, at, button, pressed)`, `native_ui_key(id, key, text, pressed)` (every key but Escape, both edges), `native_ui_wheel(id, steps)` and `native_ui_closed(id)`. `native_close_ui()` closes it; Escape does too. Mekanism's module tweaker and radial selector use it.
+
 API 43 adds `native_block_redirect(pos, state, to)`: before a right click or a break, a mod sets `to` and the click or break acts on that
 position instead (Mekanism's bounding blocks send a click on a filler cell to the machine that owns it). API 43 also adds `native_set_block(pos, block, properties)`: sets a block (`Level.setBlock` with `UPDATE_ALL`; `minecraft:air` removes), which a multi-cell
 machine uses to fill and clear its other cells. API 43 also adds `native_block_removed(pos, old, old_properties, new)`: after any change of a block into another (a player, an explosion, a piston,

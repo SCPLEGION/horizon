@@ -165,6 +165,7 @@ mod names;
 mod native_hooks;
 mod native_lifecycle;
 mod native_menus;
+mod native_ui;
 mod native_panel;
 mod native_panel_recipes;
 mod native_recipes;
@@ -689,6 +690,8 @@ enum Screen {
     DialogWarning,
     /// WinScreen: the end poem and the credits (game/win.rs).
     Win,
+    /// A screen of a native mod's own, with no block or menu (game/native_ui.rs).
+    ModUi,
 }
 struct Mining {
     pos: [i32; 3],
@@ -2141,6 +2144,8 @@ struct Game<'a> {
     hoppers: HashMap<(i32, i32, i32), machines::HopperState>,
     /// The screen of a mod block's menu open on this client (`native_screen`).
     mod_screen: Option<native_hooks::OpenNativeScreen>,
+    /// The id of the native mod's own screen that is open (`Screen::ModUi`).
+    mod_ui: Option<String>,
     /// Where item entities are, while the block entities tick (hoppers).
     item_columns: Option<machines::ItemColumns>,
     creative_screen: Creative,
@@ -7209,6 +7214,7 @@ impl Game<'_> {
             Screen::DialogWarning => self.draw_dialog_warning(&mut batch),
             Screen::CommandBlock => self.draw_command_block(&mut batch),
             Screen::BlockEditor => self.draw_block_editor(&mut batch),
+            Screen::ModUi => self.draw_native_ui(&mut batch),
             Screen::Inventory => {
                 self.draw_inventory(&mut batch);
                 self.draw_mod_browser(&mut batch);
@@ -13556,6 +13562,7 @@ impl Game<'_> {
                 Screen::WorldOptions => self.world_options_escape(),
                 Screen::CommandBlock => self.close_command_block(),
                 Screen::BlockEditor => self.close_block_editor(),
+                Screen::ModUi => self.close_native_ui(),
                 Screen::Chat => self.close_chat(),
                 Screen::Win => self.close_win_screen()?,
             },
@@ -14421,6 +14428,9 @@ impl ApplicationHandler for Game<'_> {
                     if self.screen == Screen::ServerLinks && d != 0.0 {
                         self.server_links_scroll(d);
                     }
+                    if self.screen == Screen::ModUi && d != 0.0 {
+                        self.native_ui_wheel_event(d);
+                    }
                     if self.screen == Screen::Advancements {
                         self.advancements_scroll(scaled(raw_x) as f32, d);
                     }
@@ -14567,6 +14577,7 @@ impl ApplicationHandler for Game<'_> {
                                 }
                             }
                         }
+                        Screen::ModUi => self.native_ui_mouse(button, pressed),
                         Screen::Inventory | Screen::Creative
                             if !matches!(button, MouseButton::Left | MouseButton::Right) =>
                         {
@@ -14742,6 +14753,13 @@ impl ApplicationHandler for Game<'_> {
                     } else {
                         self.creative_search_edit(event.text.as_deref());
                     }
+                }
+                WindowEvent::KeyboardInput { event, .. }
+                    if self.screen == Screen::ModUi
+                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape)) =>
+                {
+                    // A native mod's own screen takes every key but Escape.
+                    self.native_ui_key_event(&event);
                 }
                 WindowEvent::KeyboardInput { event, .. }
                     if self.recipe_search_focused()
@@ -15565,6 +15583,7 @@ impl<'a> Game<'a> {
             tnts: Vec::new(),
             hoppers: HashMap::new(),
             mod_screen: None,
+            mod_ui: None,
             item_columns: None,
             creative_screen: prepared.creative_screen,
             control: None,
