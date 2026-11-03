@@ -39,6 +39,8 @@ pub struct Menu {
     /// Container slots the menu does not have: a mod's screen hides them, so
     /// no click or quick move reaches them (`Slot` positions are the screen's).
     pub hidden: Vec<usize>,
+    /// What the slots take (see [`SlotRule`]).
+    pub rules: Vec<SlotRule>,
 }
 
 /// What a guest did with a native mod's menu (`Slots::Native`), for the game
@@ -178,6 +180,17 @@ fn shown(world: &World, k: (i32, i32, i32)) -> Option<&[Option<ItemStack>]> {
     Some(&slots[..count.min(slots.len())])
 }
 
+/// What a mod's screen lets into one slot of its menu (`native_slot_rules`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum SlotRule {
+    #[default]
+    Any,
+    /// An output slot: nothing can be placed in it.
+    Refuse,
+    /// Only these items (ids) can be placed in it.
+    Items(Vec<String>),
+}
+
 /// Slots of a menu seen as one list.
 pub struct View<'a> {
     pub guest: &'a mut Guest,
@@ -187,6 +200,8 @@ pub struct View<'a> {
     pub shulker: bool,
     /// Container slots that do not exist in this menu (see [`Menu::hidden`]).
     pub hidden: &'a [usize],
+    /// What each container slot takes (a mod's screen), the others take anything.
+    pub rules: &'a [SlotRule],
 }
 
 impl View<'_> {
@@ -234,6 +249,11 @@ impl View<'_> {
             && !crate::menu::fits_inside_container_items(stack)
         {
             return false;
+        }
+        match self.rules.get(i) {
+            Some(SlotRule::Refuse) => return false,
+            Some(SlotRule::Items(items)) if !items.iter().any(|x| **x == *stack.item) => return false,
+            _ => {}
         }
         self.enabled(i)
     }
@@ -801,6 +821,7 @@ mod tests {
             container: Some(&mut chest),
             shulker: false,
             hidden: &[],
+            rules: &[],
         };
         view.guest.carried = Some(ItemStack::new("minecraft:bundle", 1));
         // Left click with the bundle: the stone goes in.
@@ -874,6 +895,7 @@ mod tests {
                 container: Some(&mut read),
                 shulker: false,
                 hidden: &[],
+            rules: &[],
             };
             click(&mut view, &mut drag, 5 + 27, 0, input::QUICK_MOVE, &rules);
             assert_eq!(view.get(0).map(|s| s.item), Some("minecraft:dirt".into()));
@@ -911,6 +933,7 @@ mod tests {
             container: Some(&mut container),
             shulker: false,
             hidden: &hidden,
+            rules: &[],
         };
         // The hotbar's first slot (menu slot 3 + 27) lands in the one slot shown.
         click(&mut view, &mut drag, 3 + 27, 0, input::QUICK_MOVE, &rules);
@@ -935,6 +958,7 @@ mod tests {
                 container: Some(&mut container),
                 shulker,
                 hidden: &[],
+            rules: &[],
             };
             // Carried onto an empty slot, shift-clicked from the hotbar
             // (menu slot 27 + 27) and swapped in with the number key 1.
