@@ -5119,6 +5119,12 @@ impl Game<'_> {
             if self.hides_as_camera(mob.id) {
                 continue;
             }
+            // A native mod draws this mob itself (API 48).
+            let mut hidden = false;
+            self.native_mob_hidden(mob.id, &mob.kind.id, &mut hidden);
+            if hidden {
+                continue;
+            }
             let d = glam::DVec3::new(mob.position.x, mob.position.y, mob.position.z) - camera;
             // Entity.shouldRenderAtSqrDistance: 64 times the bounding box's
             // mean edge, scaled by the view scale. RemotePlayer's box counts

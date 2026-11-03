@@ -245,7 +245,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 47;
+pub(crate) const NATIVE_HOOKS_API: u32 = 48;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -797,6 +797,11 @@ impl Game<'_> {
     /// Text a mod wants drawn in the world this frame: push a [`NativeWorldText`] for each. API 47.
     pub(super) fn native_world_texts(&self, texts: &mut Vec<NativeWorldText>) {
         let _ = texts;
+    }
+    /// Whether the game should leave mob `id` of type `kind` (the base type a mod's mob is sent as) undrawn because
+    /// the mod draws it itself, from [`Self::native_mob_pose`] and `native_world_models`: set `hidden`. API 48.
+    pub(super) fn native_mob_hidden(&self, id: u32, kind: &str, hidden: &mut bool) {
+        let _ = (id, kind, hidden);
     }
     /// Quads a mod wants drawn in the world this frame: push a [`NativeWorldQuad`] for each. API 47.
     pub(super) fn native_world_quads(&self, quads: &mut Vec<NativeWorldQuad>) {
@@ -1855,6 +1860,28 @@ impl Game<'_> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);
         facts.can_occlude && facts.sturdy_full & (1 << face as u32) != 0
+    }
+    /// Where mob `id` is drawn this frame: its interpolated position (feet), body yaw and head yaw in degrees and
+    /// head pitch. API 48.
+    #[allow(dead_code)]
+    pub(super) fn native_mob_pose(&self, id: u32) -> Option<([f64; 3], f32, f32, f32)> {
+        let m = self.mobs.iter().find(|m| m.id == id && !m.removed)?;
+        let a = self.clock.fraction();
+        let lerp = |p: f64, q: f64| p + (q - p) * a;
+        let turn = |p: f32, q: f32| {
+            let d = (q - p).rem_euclid(360.0);
+            p + (if d > 180.0 { d - 360.0 } else { d }) * a as f32
+        };
+        Some((
+            [
+                lerp(m.previous.x, m.position.x),
+                lerp(m.previous.y, m.position.y),
+                lerp(m.previous.z, m.position.z),
+            ],
+            turn(m.previous_body_yaw, m.body_yaw),
+            turn(m.previous_head_yaw, m.head_yaw),
+            m.previous_head_pitch + (m.head_pitch - m.previous_head_pitch) * a as f32,
+        ))
     }
     /// The camera's right and up directions in the world, for a billboard. API 47.
     #[allow(dead_code)]
