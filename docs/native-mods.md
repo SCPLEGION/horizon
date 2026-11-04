@@ -238,7 +238,6 @@ API 53 adds `native_player_damage_rules(absorbed, rules)`: pushed `(damage type 
 
 API 52 adds `native_player_immunities(immune)`: pushed damage type ids (`minecraft:magic`) or `#`-tags are damage the player takes none of, asked every tick with the player swapped in (Mekanism's Gas Mask).
 
-API 49 adds `native_gui_model(batch, model, texture, clip, size, height, yaw)`: a mod's world model (`native_world_models`) drawn in a GUI as the inventory draws the player, turned `yaw` degrees, tilted to be seen from above, wearing another atlas sprite as its skin (Mekanism's Robit skin preview). Call it from `native_ui_draw` or a block screen's draw.
 
 API 48 adds `native_mob_hidden(id, kind, hidden)` (the game leaves a mob undrawn because the mod draws it) and `native_mob_pose(id)` (its interpolated position, body yaw, head yaw and pitch); Mekanism's Robit is drawn so, as a part tree under `native_world_models`. API 48 also gives `NativeWorldModel` a `parts` list (the x, y and z rotations of parts by name) and lets a world model's JSON be `{"vanilla": "minecraft:chest#main", "offset": [x, y, z]}`: the part tree of a vanilla entity model under the mod's texture (Mekanism's Personal Chest lid).
 
