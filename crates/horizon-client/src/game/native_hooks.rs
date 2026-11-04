@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 55 adds `SlotRule::Check(fn(&ItemStack) -> bool)`: a slot that takes only stacks in a given state (Mekanism's hohlraum slot wants a full hohlraum).
 //! API 50 adds a mod item's continuous use (`native_using_tick`, `native_start_using`) and `native_clip`/`native_eye`: a ray through the world's blocks and the eyes of the player (Mekanism's Flamethrower).
 //! API 54 adds `native_gear_attributes`, `native_glider` and `native_glide_wear`: attribute modifiers, gliding and its upkeep for worn gear a mod computes (Mekanism's MekaSuit Hydrostatic Repulsor, Gyroscopic Stabilization and Elytra units).
 //! API 53 adds `native_player_damage_rules`: a share of the damage of some types a mod's armor takes, paid for afterwards (Mekanism's MekaSuit Inhalation Purification Unit).
@@ -255,7 +256,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 54;
+pub(crate) const NATIVE_HOOKS_API: u32 = 55;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.

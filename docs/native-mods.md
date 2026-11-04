@@ -224,6 +224,10 @@ API 47 adds `native_world_items(items)` (`NativeWorldItem { item, matrix, light_
 contents or a liquifier's food), `native_world_texts(texts)` (`NativeWorldText { text, matrix, x, y, color, light_at }`: a line of text in font pixels, y down, like a sign's) and
 `native_face_sturdy(pos, face)` (`canOcclude` and a full sturdy face). Matrices are column major, in world space. Bundles that use them need `"hooks": 47`.
 
+API 55 adds `SlotRule::Check(fn(&ItemStack) -> bool)` to the rules `native_slot_rules` returns: the slot takes only the stacks the function accepts, so a rule can test an item's components (Mekanism's hohlraum slot takes only a full hohlraum).
+
+API 49 adds `native_gui_model(batch, model, texture, clip, origin, size, yaw)`: a mod's world model (`native_world_models`) drawn in a GUI as a picture-in-picture, its feet at `origin`, `size` pixels to the block, turned `yaw` degrees about its vertical axis, lit like an entity in a UI, wearing another atlas sprite as its skin (Mekanism's Robit skin preview). Call it from `native_ui_draw` or a block screen's draw.
+
 API 50 adds a mod item's continuous use: `native_use_item` claims the click and calls `native_start_using`, then `native_using_tick(stack, ticks, claimed, keep)` runs each tick the use key is held (set `claimed`, and `keep` to go on). `native_clip(from, to)` finds the first block on a segment and `native_eye()` is the player's eyes (Mekanism's Flamethrower).
 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
