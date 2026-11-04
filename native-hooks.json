@@ -364,6 +364,11 @@
       "name": "world_quads",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_world_quads"
+    },
+    {
+      "name": "fog",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_fog"
     }
   ]
 }

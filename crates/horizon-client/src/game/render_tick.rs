@@ -140,6 +140,7 @@ impl Game<'_> {
         if !self.settings.horizon.fog {
             horizon_client::fog::clear_distance_fog(&mut fog, &input);
         }
+        self.native_fog(fog_type as u8, &mut fog);
         fog
     }
     /// `FogRenderer.computeFogColor`'s night vision brightenFactor:
