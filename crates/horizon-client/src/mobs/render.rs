@@ -20,6 +20,12 @@ pub type Atlas<'a> = &'a dyn Fn(&str) -> Option<[f32; 4]>;
 /// camera). It marks the `ARMOR_ENTITY_GLINT_TEXTURING` sample: entity.wgsl
 /// transforms the model UV and reads `enchanted_glint_armor`.
 pub const ARMOR_GLINT: u32 = 36;
+/// Added to the overlay of an extra layer (`render_with`) to draw it at full brightness and unshaded, as a layer
+/// of `full_bright` (Mekanism's MekaSuit LEDs, `opaqueEmissiveQuads`).
+pub const LAYER_FULL_BRIGHT: u32 = 1 << 8;
+/// The overlay of an extra layer with translucent pixels (`Sheets.translucentItemSheet`, as `entity_batch`'s
+/// `TRANSLUCENT_ITEM_OVERLAY`; the MekaSuit's glass).
+pub const LAYER_TRANSLUCENT: u32 = 32;
 
 /// `RenderTypes.breezeWind`: the texture of the breeze's wind layer scrolls
 /// by 0.02 of the texture per tick.
@@ -1480,7 +1486,16 @@ fn render_visible(
         draw_body(out);
     }
     for (part, uv, color, layer_overlay) in extra {
-        draw(part, base, &poses, *uv, *color, light, *layer_overlay, out);
+        if layer_overlay & LAYER_FULL_BRIGHT == 0 {
+            draw(part, base, &poses, *uv, *color, light, *layer_overlay, out);
+            continue;
+        }
+        let start = out.len();
+        let bright = 240 | 240 << 8;
+        draw(part, base, &poses, *uv, *color, bright, layer_overlay & !LAYER_FULL_BRIGHT, out);
+        for vertex in &mut out[start..] {
+            vertex.normal = [0; 4];
+        }
     }
     let mut all_layers = layers(m, s.age);
     // WardenRenderer: the translucent emissive layers fade with the animations.

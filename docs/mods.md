@@ -248,4 +248,5 @@ models on the wearer: `"layers": { "horizon_models": [ { "model": "<ns>:<name>",
 `model` is an entity-model part tree in `assets/<ns>/horizon/worn_models/<name>.json` whose children are named for the wearer's parts
 (`head`, `body`, `left_arm`, `right_arm`, `left_leg`, `right_leg`), with polygons in pixels relative to each part; `texture` is
 `textures/entity/equipment/horizon_models/<name>.png`. `hide_with` (optional) leaves the layer out while any of those items is worn too
-(parts that show only without the neighbouring armour piece).
+(parts that show only without the neighbouring armour piece). `"emissive": true` draws the layer at full brightness and unshaded (LEDs), and
+`"translucent": true` with the translucent material (glass).
