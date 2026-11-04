@@ -2466,7 +2466,7 @@ impl Game<'_> {
                 self.res.mob_data(),
                 &host.hub.guest(*conn).map_or_else(
                     || self.worn_armor_layers(m),
-                    |g| self.stack_armor_layers(&g.armor),
+                    |g| self.stack_armor_layers(&g.armor, super::armor_stands::held_sides(m)),
                 ),
                 out,
             );

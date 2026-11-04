@@ -249,4 +249,5 @@ models on the wearer: `"layers": { "horizon_models": [ { "model": "<ns>:<name>",
 (`head`, `body`, `left_arm`, `right_arm`, `left_leg`, `right_leg`), with polygons in pixels relative to each part; `texture` is
 `textures/entity/equipment/horizon_models/<name>.png`. `hide_with` (optional) leaves the layer out while any of those items is worn too
 (parts that show only without the neighbouring armour piece). `"emissive": true` draws the layer at full brightness and unshaded (LEDs), and
-`"translucent": true` with the translucent material (glass).
+`"translucent": true` with the translucent material (glass). `"hide_when_held": {"left": ["<ns>:<item>"], "right": [...]}` leaves the
+layer out while one of those items is held on that side of the model (the main hand is on the main arm's side).

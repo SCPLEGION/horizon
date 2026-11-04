@@ -609,7 +609,7 @@ impl Game<'_> {
             &lookup,
             packed,
             self.res.mob_data(),
-            &self.player_armor_layers(),
+            &self.player_armor_layers(&m),
             out,
         );
         let chest = self.armor[1].as_ref().map(|s| &*s.item);
@@ -709,7 +709,7 @@ impl Game<'_> {
             &lookup,
             240 | 240 << 8,
             self.res.mob_data(),
-            &self.player_armor_layers(),
+            &self.player_armor_layers(&m),
             &mut verts,
         );
         let chest = self.armor[1].as_ref().map(|s| &*s.item);

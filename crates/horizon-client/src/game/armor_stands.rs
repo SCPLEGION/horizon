@@ -31,6 +31,17 @@ fn layer_color(undyed: Option<u32>, stack: Option<&ItemStack>) -> u32 {
     })
 }
 
+/// The items held on a model's (left, right) side: the main hand is on the main arm's side
+/// (`MekaSuitArmor`: `state.mainArm == LEFT ? MAINHAND : OFFHAND` for the left).
+pub(super) fn held_sides(m: &Mob) -> [Option<&str>; 2] {
+    let (main, off) = (m.extra.main_hand.as_deref(), m.extra.off_hand.as_deref());
+    if m.extra.main_hand_left {
+        [main, off]
+    } else {
+        [off, main]
+    }
+}
+
 /// Armor stand models and the humanoid layers of every equipment asset.
 /// One model of an equipment asset's `layers.horizon_models`.
 pub(super) struct WornModel {
@@ -39,6 +50,9 @@ pub(super) struct WornModel {
     pub sprite: String,
     /// The item ids that hide it when worn too.
     pub hide_with: Vec<String>,
+    /// Item ids that hide it while held on the model's left (`hide_when_held.left`) or right
+    /// (`hide_when_held.right`) side: the Meka-Tool replaces the suit's hand parts.
+    pub hide_held: [Vec<String>; 2],
     /// Drawn at full brightness and unshaded (`"emissive": true`).
     pub emissive: bool,
     /// Drawn with translucent pixels (`"translucent": true`).
@@ -206,7 +220,16 @@ impl ArmorStandAssets {
                             .flatten()
                             .filter_map(|id| id.as_str().map(str::to_owned))
                             .collect();
+                        let held = |side: &str| -> Vec<String> {
+                            layer["hide_when_held"][side]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|id| id.as_str().map(str::to_owned))
+                                .collect()
+                        };
                         Some(WornModel {
+                            hide_held: [held("left"), held("right")],
                             part: Part::from_json("horizon_worn", &json),
                             sprite: format!("{tns}:entity/equipment/horizon_models/{tname}"),
                             hide_with,
@@ -256,18 +279,20 @@ impl ArmorStandAssets {
 impl Game<'_> {
     /// `HumanoidArmorLayer` for the player: (model, texture rect, colour,
     /// overlay) of each worn piece, head to feet.
-    pub(super) fn player_armor_layers(&self) -> Vec<(&Part, [f32; 4], u32, u32)> {
-        self.stack_armor_layers(&self.armor)
+    pub(super) fn player_armor_layers(&self, m: &Mob) -> Vec<(&Part, [f32; 4], u32, u32)> {
+        self.stack_armor_layers(&self.armor, held_sides(m))
     }
     /// `HumanoidArmorLayer` for worn stacks (head to feet), trims included.
     pub(super) fn stack_armor_layers(
         &self,
         armor: &[Option<ItemStack>; 4],
+        held: [Option<&str>; 2],
     ) -> Vec<(&Part, [f32; 4], u32, u32)> {
         self.armor_layers(
             armor
                 .each_ref()
                 .map(|s| s.as_ref().map(|s| (&*s.item, Some(s)))),
+            held,
         )
     }
     /// `HumanoidArmorLayer` for another player's model: the armour it wears
@@ -282,6 +307,7 @@ impl Game<'_> {
                 (e.feet.as_deref(), e.armor[3].as_ref()),
             ]
             .map(|(item, stack)| item.map(|i| (i, stack))),
+            held_sides(m),
         )
     }
     /// The layers of the armour items `worn` (with their stacks when known,
@@ -289,6 +315,7 @@ impl Game<'_> {
     fn armor_layers(
         &self,
         worn: [Option<(&str, Option<&ItemStack>)>; 4],
+        held: [Option<&str>; 2],
     ) -> Vec<(&Part, [f32; 4], u32, u32)> {
         let assets = &self.armor_stand_assets;
         let mut out = Vec::new();
@@ -359,6 +386,14 @@ impl Game<'_> {
             // A content mod's own models on the wearer's parts (free runners, a jetpack).
             for worn in worn {
                 if worn.hide_with.iter().any(|id| items_worn.contains(&id.as_str())) {
+                    continue;
+                }
+                if worn
+                    .hide_held
+                    .iter()
+                    .zip(held)
+                    .any(|(ids, item)| item.is_some_and(|i| ids.iter().any(|id| id == i)))
+                {
                     continue;
                 }
                 if let Some(r) = self.gui.atlas.sprites.get(worn.sprite.as_str()) {
