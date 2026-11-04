@@ -189,8 +189,6 @@ pub enum SlotRule {
     Refuse,
     /// Only these items (ids) can be placed in it.
     Items(Vec<String>),
-    /// Only stacks this accepts can be placed in it (a state test: a slot that wants a full hohlraum).
-    Check(fn(&ItemStack) -> bool),
 }
 
 /// Slots of a menu seen as one list.
@@ -257,7 +255,6 @@ impl View<'_> {
             Some(SlotRule::Items(items)) if !items.iter().any(|x| **x == *stack.item) => {
                 return false;
             }
-            Some(SlotRule::Check(accepts)) if !accepts(stack) => return false,
             _ => {}
         }
         self.enabled(i)

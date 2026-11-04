@@ -224,8 +224,6 @@ API 47 adds `native_world_items(items)` (`NativeWorldItem { item, matrix, light_
 contents or a liquifier's food), `native_world_texts(texts)` (`NativeWorldText { text, matrix, x, y, color, light_at }`: a line of text in font pixels, y down, like a sign's) and
 `native_face_sturdy(pos, face)` (`canOcclude` and a full sturdy face). Matrices are column major, in world space. Bundles that use them need `"hooks": 47`.
 
-API 50 adds `SlotRule::Check(fn(&ItemStack) -> bool)` to the rules `native_slot_rules` returns: the slot takes only the stacks the function accepts, so a rule can test an item's components (Mekanism's hohlraum slot takes only a full hohlraum).
-
 API 49 adds `native_gui_model(batch, model, texture, clip, origin, size, yaw)`: a mod's world model (`native_world_models`) drawn in a GUI as a picture-in-picture, its feet at `origin`, `size` pixels to the block, turned `yaw` degrees about its vertical axis, lit like an entity in a UI, wearing another atlas sprite as its skin (Mekanism's Robit skin preview). Call it from `native_ui_draw` or a block screen's draw.
 
 API 48 adds `native_mob_hidden(id, kind, hidden)` (the game leaves a mob undrawn because the mod draws it) and `native_mob_pose(id)` (its interpolated position, body yaw, head yaw and pitch); Mekanism's Robit is drawn so, as a part tree under `native_world_models`. API 48 also gives `NativeWorldModel` a `parts` list (the x, y and z rotations of parts by name) and lets a world model's JSON be `{"vanilla": "minecraft:chest#main", "offset": [x, y, z]}`: the part tree of a vanilla entity model under the mod's texture (Mekanism's Personal Chest lid).

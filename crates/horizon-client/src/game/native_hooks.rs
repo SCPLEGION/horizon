@@ -6,7 +6,6 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
-//! API 50 adds `SlotRule::Check(fn(&ItemStack) -> bool)`: a slot that takes only stacks in a given state (Mekanism's hohlraum slot wants a full hohlraum).
 //! API 49 adds `native_gui_model`: a mod's world model drawn turning in a GUI (Mekanism's Robit skin previews).
 //! API 46 adds `native_mob_types` (mob types of a mod's own, networked as a vanilla base), `native_mobs_tick`, `native_mob_died`, `native_use_mob`, `native_mob_ids`, `native_with_mob` and `Extra::mod_data`, saved with the mob (Mekanism's Robit).
 //! API 45 adds `native_keep_chunks`: a mod keeps chunks loaded and ticking for as long as it asks (Mekanism's dimensional stabilizer and anchor upgrade).
@@ -250,7 +249,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 50;
+pub(crate) const NATIVE_HOOKS_API: u32 = 49;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
