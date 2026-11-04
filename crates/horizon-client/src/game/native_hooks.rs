@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 56 adds `native_fog`: a mod changes the frame's fog (Mekanism's MekaSuit Vision Enhancement Unit pushes the near plane back and tints it).
 //! API 55 adds `SlotRule::Check(fn(&ItemStack) -> bool)`: a slot that takes only stacks in a given state (Mekanism's hohlraum slot wants a full hohlraum).
 //! API 50 adds a mod item's continuous use (`native_using_tick`, `native_start_using`) and `native_clip`/`native_eye`: a ray through the world's blocks and the eyes of the player (Mekanism's Flamethrower).
 //! API 54 adds `native_gear_attributes`, `native_glider` and `native_glide_wear`: attribute modifiers, gliding and its upkeep for worn gear a mod computes (Mekanism's MekaSuit Hydrostatic Repulsor, Gyroscopic Stabilization and Elytra units).
@@ -256,7 +257,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 55;
+pub(crate) const NATIVE_HOOKS_API: u32 = 56;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1378,6 +1379,12 @@ impl Game<'_> {
     /// `add_value`). Applied like an enchantment's modifiers. Server-side, for every player of the world. API 54.
     pub(super) fn native_gear_attributes(&mut self, attributes: &mut Vec<(String, String, f64, String)>) {
         let _ = attributes;
+    }
+    /// The frame's fog (`FogRenderer.setupFog`, and Neo's `ViewportEvent.RenderFog` and `ComputeFogColor`) after the game
+    /// set it up, for a mod to change: `fog_type` is 0 for atmospheric fog, 1 water, 2 lava, 3 powder snow. Client-side,
+    /// every frame. API 56.
+    pub(super) fn native_fog(&self, fog_type: u8, fog: &mut horizon_client::fog::FogData) {
+        let _ = (fog_type, fog);
     }
     /// Set `glider` to let the worn gear glide as an elytra does (`GLIDING_FLIGHT`), asked every tick with the player
     /// swapped in. Server-side, for every player of the world. API 54.

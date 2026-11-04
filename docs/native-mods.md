@@ -232,6 +232,8 @@ API 50 adds a mod item's continuous use: `native_use_item` claims the click and 
 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
 
+API 56 adds `native_fog(fog_type, fog)`: the frame's fog after the game set it up (`fog_type` 0 atmospheric, 1 water, 2 lava, 3 powder snow), for the mod to change its colour and distances, every frame on the client (Mekanism's Vision Enhancement Unit).
+
 API 54 adds `native_gear_attributes(attributes)` (push `(attribute id, modifier id, amount, operation)` for the worn gear, applied like an enchantment's modifiers), `native_glider(glider)` (set it to let the worn gear glide as an elytra) and `native_glide_wear(wear, claimed)` (the chest gear's wear while gliding, which `claimed` pays another way): Mekanism's MekaSuit Hydrostatic Repulsor, Gyroscopic Stabilization and Elytra units.
 
 API 53 adds `native_player_damage_rules(absorbed, rules)`: pushed `(damage type id or #tag, share)` pairs are the share of such hits a mod's armor takes (1 is all of it), also for damage that bypasses armor; `absorbed` is the damage they took since the last call, for the mod to pay for (Mekanism's Inhalation Purification Unit).
