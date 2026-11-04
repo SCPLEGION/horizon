@@ -225,7 +225,8 @@ fn atlas_sprites(root: &Path, packed: &[PackedImage]) -> (Vec<PackedImage>, Vec<
     for (atlas, sources) in atlas_sources::atlases(root) {
         // The other atlases' renamed files (GUI sprites, particles...) are
         // looked up by their texture paths here.
-        let item_models = atlas == "minecraft:blocks" || atlas == "minecraft:items";
+        // The particle atlas too: a mod's world quads draw `generic_0` and the like (Mekanism's radiation motes).
+        let item_models = atlas == "minecraft:blocks" || atlas == "minecraft:items" || atlas == "minecraft:particles";
         for (id, origin) in atlas_sources::list(&sources, &textures) {
             if !item_models && matches!(origin, SpriteOrigin::File(_)) {
                 continue;
