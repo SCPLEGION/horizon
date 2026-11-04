@@ -260,6 +260,7 @@ impl Game<'_> {
     pub(super) fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
         let block_break_speed = self.block_break_speed();
         let state = self.world.block(pos[0], pos[1], pos[2]);
+        let submerged = self.submerged_mining_speed();
         let facts = self.res.facts().get(state);
         if facts.hardness == -1.0 {
             return 0.0;
@@ -281,7 +282,7 @@ impl Game<'_> {
                 .fluid
                 == horizon_client::blocks::Fluid::Water
         {
-            speed *= self.submerged_mining_speed();
+            speed *= submerged;
         }
         if self.player.as_ref().is_some_and(|p| !p.ground.on_ground) {
             speed /= 5.0;

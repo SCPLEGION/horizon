@@ -2636,13 +2636,15 @@ impl Game<'_> {
     /// The slot of the hand that acts: the selected one, or `OFFHAND_SLOT`.
     /// `LivingEntity.canGlideUsing`: a glider in the chest slot that will
     /// not break with its next point of wear.
-    fn glider_worn(&self) -> bool {
-        self.armor[1].as_ref().is_some_and(|s| {
+    fn glider_worn(&mut self) -> bool {
+        let mut glider = self.armor[1].as_ref().is_some_and(|s| {
             self.res
                 .items()
                 .get(&s.item)
                 .is_some_and(|i| i.glider && (i.max_damage == 0 || s.damage + 1 < i.max_damage))
-        })
+        });
+        self.native_glider(&mut glider);
+        glider
     }
     /// `LivingEntity.canFreeze`'s armor half: any worn piece in
     /// `freeze_immune_wearables`.
@@ -5735,6 +5737,7 @@ impl Game<'_> {
         }
         let block_break_speed = self.block_break_speed();
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
+        let submerged = self.submerged_mining_speed();
         let facts = self.res.facts().get(state);
         if facts.hardness < 0.0 {
             // The server still counts its destroy ticks on an unbreakable block.
@@ -5765,7 +5768,7 @@ impl Game<'_> {
             .fluid
             == Fluid::Water
         {
-            speed *= self.submerged_mining_speed();
+            speed *= submerged;
         }
         let harvest = !facts.requires_tool || self.items().correct_for_drops(held, &facts.name);
         let progress = if facts.hardness == 0.0 {
@@ -6147,7 +6150,12 @@ impl Game<'_> {
             }
         }
         // `ItemStack.hurtAndBreak` for the glide: Unbreaking can save the wear.
+        let mut glide_claimed = false;
+        if glider_wear > 0 {
+            self.native_glide_wear(glider_wear, &mut glide_claimed);
+        }
         if glider_wear > 0
+            && !glide_claimed
             && !self.creative
             && let Some(stack) = self.armor[1].clone()
         {
