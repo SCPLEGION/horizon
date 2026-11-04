@@ -32,6 +32,18 @@ fn layer_color(undyed: Option<u32>, stack: Option<&ItemStack>) -> u32 {
 }
 
 /// Armor stand models and the humanoid layers of every equipment asset.
+/// One model of an equipment asset's `layers.horizon_models`.
+pub(super) struct WornModel {
+    pub part: Part,
+    /// The sprite (`textures/entity/equipment/horizon_models/<name>`).
+    pub sprite: String,
+    /// The item ids that hide it when worn too.
+    pub hide_with: Vec<String>,
+    /// Drawn at full brightness and unshaded (`"emissive": true`).
+    pub emissive: bool,
+    /// Drawn with translucent pixels (`"translucent": true`).
+    pub translucent: bool,
+}
 pub(super) struct ArmorStandAssets {
     pub main: Option<Part>,
     pub small: Option<Part>,
@@ -44,7 +56,7 @@ pub(super) struct ArmorStandAssets {
     /// asset id -> the models a content mod's equipment asset draws on the wearer
     /// (`layers.horizon_models`), each with its sprite and the item ids that hide it when worn too
     /// (`hide_with`: MekaSuit parts that show only while the neighbouring piece is absent).
-    pub worn_models: HashMap<String, Vec<(Part, String, Vec<String>)>>,
+    pub worn_models: HashMap<String, Vec<WornModel>>,
     /// `<ns>:<name>` -> the model a content mod draws in the world by itself
     /// (`assets/<ns>/horizon/world_models/<name>.json`, a part tree in pixels,
     /// drawn as it stands) with its sprite (`textures/entity/equipment/horizon_models/<name>`).
@@ -175,7 +187,7 @@ impl ArmorStandAssets {
                 // `layers.horizon_models`: [{"model": "<ns>:<name>", "texture": "<ns>:<name>"}], a model in
                 // `assets/<ns>/horizon/worn_models/<name>.json` (an entity-model part tree posed on the
                 // wearer's parts by name) and a texture in `textures/entity/equipment/horizon_models/`.
-                let models: Vec<(Part, String, Vec<String>)> = v["layers"]["horizon_models"]
+                let models: Vec<WornModel> = v["layers"]["horizon_models"]
                     .as_array()
                     .into_iter()
                     .flatten()
@@ -194,11 +206,13 @@ impl ArmorStandAssets {
                             .flatten()
                             .filter_map(|id| id.as_str().map(str::to_owned))
                             .collect();
-                        Some((
-                            Part::from_json("horizon_worn", &json),
-                            format!("{tns}:entity/equipment/horizon_models/{tname}"),
+                        Some(WornModel {
+                            part: Part::from_json("horizon_worn", &json),
+                            sprite: format!("{tns}:entity/equipment/horizon_models/{tname}"),
                             hide_with,
-                        ))
+                            emissive: layer["emissive"].as_bool().unwrap_or(false),
+                            translucent: layer["translucent"].as_bool().unwrap_or(false),
+                        })
                     })
                     .collect();
                 if !models.is_empty() {
@@ -343,12 +357,20 @@ impl Game<'_> {
                 ));
             }
             // A content mod's own models on the wearer's parts (free runners, a jetpack).
-            for (model, texture, hide_with) in worn {
-                if hide_with.iter().any(|id| items_worn.contains(&id.as_str())) {
+            for worn in worn {
+                if worn.hide_with.iter().any(|id| items_worn.contains(&id.as_str())) {
                     continue;
                 }
-                if let Some(r) = self.gui.atlas.sprites.get(texture.as_str()) {
-                    out.push((model, [r.u0, r.v0, r.u1, r.v1], 0xFFFF_FFFF, overlay));
+                if let Some(r) = self.gui.atlas.sprites.get(worn.sprite.as_str()) {
+                    // `emissive`: full brightness; `translucent`: the translucent material (glass).
+                    let mut layer_overlay = overlay;
+                    if worn.translucent && overlay == 0 {
+                        layer_overlay = horizon_client::mobs::render::LAYER_TRANSLUCENT;
+                    }
+                    if worn.emissive {
+                        layer_overlay |= horizon_client::mobs::render::LAYER_FULL_BRIGHT;
+                    }
+                    out.push((&worn.part, [r.u0, r.v0, r.u1, r.v1], 0xFFFF_FFFF, layer_overlay));
                 }
             }
             if let Some(r) = stack
