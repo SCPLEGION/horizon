@@ -54,17 +54,30 @@ impl Game<'_> {
                 .and_then(|p| p.attribute("minecraft:block_break_speed").ok()),
         )
     }
-    /// `Attributes.SUBMERGED_MINING_SPEED` (0.2, raised by aqua affinity).
-    pub(super) fn submerged_mining_speed(&self) -> f32 {
-        let mut total = 0.0;
+    /// `Attributes.SUBMERGED_MINING_SPEED` (0.2, raised by aqua affinity and by a mod's gear:
+    /// `AttributeInstance.calculateValue`, base plus `add_value`, scaled by the multipliers).
+    pub(super) fn submerged_mining_speed(&mut self) -> f32 {
+        let mut mods = Vec::new();
         for stack in self.armor.iter().flatten() {
             for (attr, _, amount, op) in self.stations().enchantments.attributes(stack) {
-                if attr == "minecraft:submerged_mining_speed" && op == "add_multiplied_total" {
-                    total += amount;
-                }
+                mods.push((attr, amount, op));
             }
         }
-        (0.2 * (1.0 + total)) as f32
+        let mut gear = Vec::new();
+        self.native_gear_attributes(&mut gear);
+        mods.extend(gear.into_iter().map(|(attr, _, amount, op)| (attr, amount, op)));
+        let (mut add, mut base, mut total) = (0.0, 0.0, 1.0);
+        for (attr, amount, op) in mods {
+            if attr != "minecraft:submerged_mining_speed" {
+                continue;
+            }
+            match op.as_str() {
+                "add_multiplied_total" => total *= 1.0 + amount,
+                "add_multiplied_base" => base += amount,
+                _ => add += amount,
+            }
+        }
+        ((0.2 + add) * (1.0 + base) * total) as f32
     }
     /// `EnchantmentHelper.processDurabilityChange` (unbreaking) for `amount` points.
     pub(super) fn durability_loss(&mut self, stack: &ItemStack, amount: u32) -> u32 {
@@ -959,6 +972,7 @@ impl Game<'_> {
                 wanted.push((attr, format!("{id}/{slot}"), amount, op));
             }
         }
+        self.native_gear_attributes(&mut wanted);
         let Some(p) = self.player.as_mut() else {
             return;
         };

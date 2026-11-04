@@ -7,6 +7,7 @@
 //! WebAssembly mod of the same id kept them.
 //!
 //! API 50 adds a mod item's continuous use (`native_using_tick`, `native_start_using`) and `native_clip`/`native_eye`: a ray through the world's blocks and the eyes of the player (Mekanism's Flamethrower).
+//! API 54 adds `native_gear_attributes`, `native_glider` and `native_glide_wear`: attribute modifiers, gliding and its upkeep for worn gear a mod computes (Mekanism's MekaSuit Hydrostatic Repulsor, Gyroscopic Stabilization and Elytra units).
 //! API 53 adds `native_player_damage_rules`: a share of the damage of some types a mod's armor takes, paid for afterwards (Mekanism's MekaSuit Inhalation Purification Unit).
 //! API 52 adds `native_player_immunities`: damage types a player takes none of (Mekanism's Gas Mask).
 //! API 51 adds looping sounds (`native_loop_sound`, `native_stop_loop_sound`): a loop kept alive by calling it each tick (Mekanism's Industrial Alarm and Flamethrower).
@@ -254,7 +255,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 53;
+pub(crate) const NATIVE_HOOKS_API: u32 = 54;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1370,6 +1371,23 @@ impl Game<'_> {
     /// world. API 53.
     pub(super) fn native_player_damage_rules(&mut self, absorbed: f32, rules: &mut Vec<(String, f32)>) {
         let _ = (absorbed, rules);
+    }
+    /// Attribute modifiers the player's worn gear gives beyond what its items list, asked every tick with the player
+    /// swapped in: push `(attribute id, modifier id, amount, operation)` (`minecraft:water_movement_efficiency`,
+    /// `add_value`). Applied like an enchantment's modifiers. Server-side, for every player of the world. API 54.
+    pub(super) fn native_gear_attributes(&mut self, attributes: &mut Vec<(String, String, f64, String)>) {
+        let _ = attributes;
+    }
+    /// Set `glider` to let the worn gear glide as an elytra does (`GLIDING_FLIGHT`), asked every tick with the player
+    /// swapped in. Server-side, for every player of the world. API 54.
+    pub(super) fn native_glider(&mut self, glider: &mut bool) {
+        let _ = glider;
+    }
+    /// The gliding player's chest gear takes `wear` points of wear (`Equippable.onGlideDamage`, one a second): set
+    /// `claimed` to pay for it another way (energy) so the item takes none. Server-side, for every player of the
+    /// world. API 54.
+    pub(super) fn native_glide_wear(&mut self, wear: u32, claimed: &mut bool) {
+        let _ = (wear, claimed);
     }
     /// A player uses `stack` (right click) with `self.hand` on the block at
     /// `pos`, `face` the face clicked (`[0, 1, 0]` is the top), once the
