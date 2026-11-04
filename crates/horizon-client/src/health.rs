@@ -339,6 +339,26 @@ impl PlayerMotion {
         }) {
             return Ok(BlockOutcome::default());
         }
+        // A mod's armor takes its share of some damage types, armor-bypassing ones too (`native_player_damage_rules`).
+        let mut amount = amount;
+        let rule_share: f32 = self
+            .damage_rules
+            .iter()
+            .filter(|(entry, _)| match entry.strip_prefix('#') {
+                Some(tag) => source.in_tag(tag),
+                None => source.is_type(entry),
+            })
+            .map(|(_, share)| *share)
+            .sum::<f32>()
+            .clamp(0.0, 1.0);
+        if rule_share > 0.0 {
+            let taken = amount * rule_share;
+            self.damage_rules_taken += taken;
+            amount -= taken;
+            if amount <= 0.0 {
+                return Ok(BlockOutcome::default());
+            }
+        }
         let armor = self.attribute("minecraft:armor").unwrap_or(0.0) as f32;
         let toughness = self.attribute("minecraft:armor_toughness").unwrap_or(0.0) as f32;
         let before = self.health.health() + self.health.absorption();

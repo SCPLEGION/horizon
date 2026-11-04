@@ -2610,6 +2610,12 @@ impl Game<'_> {
                 if let Some(p) = g.player.as_mut() {
                     p.damage_immune = immune;
                 }
+                let taken = g.player.as_mut().map_or(0.0, |p| std::mem::take(&mut p.damage_rules_taken));
+                let mut rules = Vec::new();
+                g.native_player_damage_rules(taken, &mut rules);
+                if let Some(p) = g.player.as_mut() {
+                    p.damage_rules = rules;
+                }
             });
             if absorbed > 0.0 || self.world.game_time % 10 == 0 {
                 self.as_guest(host, conn, |g| {

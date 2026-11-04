@@ -406,6 +406,11 @@ pub struct PlayerMotion {
     /// Damage types (registry ids, `minecraft:magic`) or tags (`#minecraft:is_fire`) that do the player nothing, set
     /// by the game from `native_player_immunities` each tick (a gas mask against magic). Server-side only.
     pub damage_immune: Vec<String>,
+    /// Shares of the damage of some types (`minecraft:magic`, `#minecraft:is_fire`) that a mod's armor takes, set by the
+    /// game from `native_player_damage_rules` each tick; they apply to sources that bypass armor too. Server-side only.
+    pub damage_rules: Vec<(String, f32)>,
+    /// The damage `damage_rules` took since the game last read it, for the mod to pay for.
+    pub damage_rules_taken: f32,
     /// The damage `damage_absorption` took since the game last read it, for
     /// the mod to pay for (`native_player_damage`).
     pub damage_absorbed: f32,
@@ -583,6 +588,8 @@ impl PlayerMotion {
             hurt_log: Vec::new(),
             damage_absorption: 0.0,
             damage_immune: Vec::new(),
+            damage_rules: Vec::new(),
+            damage_rules_taken: 0.0,
             damage_absorbed: 0.0,
             attack_log: Vec::new(),
             border: None,
