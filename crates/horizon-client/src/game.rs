@@ -11143,6 +11143,14 @@ impl Game<'_> {
         if self.creative {
             return;
         }
+        // A mod's item that works as shears pays for its use another way (energy), not by wear.
+        if let Some(held) = self.held().cloned()
+            && &*held.item != "minecraft:shears"
+            && self.acting_item_id(&held) == "minecraft:shears"
+        {
+            self.native_shears_used(&held);
+            return;
+        }
         let amount = match self.held().cloned() {
             Some(held) => self.wear(&held, amount),
             None => amount,

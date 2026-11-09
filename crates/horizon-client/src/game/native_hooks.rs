@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 59 adds `native_shears_used`: the item that acts as shears was used to shear, for the mod to charge it (Mekanism's Meka-Tool spends energy).
 //! API 58 adds `native_acts_as_shears`: a mod's item that works as shears on mobs and blocks (Mekanism's Meka-Tool with a Shearing Unit).
 //! API 57 adds `native_worn_tint`: a mod tints the opaque worn models of a piece of gear (Mekanism's Color Modulation Unit).
 //! API 56 adds `native_fog`: a mod changes the frame's fog (Mekanism's MekaSuit Vision Enhancement Unit pushes the near plane back and tints it).
@@ -259,7 +260,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 58;
+pub(crate) const NATIVE_HOOKS_API: u32 = 59;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1398,6 +1399,11 @@ impl Game<'_> {
     /// `minecraft:shears` for shearing mobs, hives, pumpkins and leads. Asked on both sides. API 58.
     pub(super) fn native_acts_as_shears(&self, stack: &ItemStack, shears: &mut bool) {
         let _ = (stack, shears);
+    }
+    /// `stack`, a mod's item that acts as shears, was used where shears would take wear (a mob sheared, a hive or pumpkin
+    /// harvested, a lead cut): the mod charges it (energy) instead. Server-side, with the player swapped in. API 59.
+    pub(super) fn native_shears_used(&mut self, stack: &ItemStack) {
+        let _ = stack;
     }
     /// The item id the interaction code sees for `stack`: `minecraft:shears` when a mod's item acts as shears.
     pub(super) fn acting_item_id(&self, stack: &ItemStack) -> String {
