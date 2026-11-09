@@ -233,6 +233,7 @@ API 50 adds a mod item's continuous use: `native_use_item` claims the click and 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
 
 API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: registers a mod's game event (`radius` its notification radius, `frequency` its vibration frequency, 0 for none), so sculk sensors, shriekers and wardens hear it when the game posts it; call it once at start (Mekanism's jetpack burn, gravity modulation and seismic vibration).
+API 64 adds `native_online_players()` (the UUIDs of the players a server hosts) and `native_remote_players()` (the other players a client sees: UUID and feet position), for a mod that keeps what players wear in sync (Mekanism's jetpack and scuba mask sounds from other players).
 API 63 adds `native_drop_item(stack, at, face)`: drops a stack as an item entity at `at`, thrown out of the block face `face` (Mekanism's Configurator in Empty mode).
 
 API 61 adds `native_may_fly(may_fly)`: set it to let the player fly as in creative mode (double jump toggles flying) while in survival; asked whenever the game sets the player's abilities, on both sides (Mekanism's Gravitational Modulating Unit).

@@ -385,7 +385,11 @@ impl Game<'_> {
             }
             // A content mod's own models on the wearer's parts (free runners, a jetpack).
             for worn in worn {
-                if worn.hide_with.iter().any(|id| items_worn.contains(&id.as_str())) {
+                if worn
+                    .hide_with
+                    .iter()
+                    .any(|id| items_worn.contains(&id.as_str()))
+                {
                     continue;
                 }
                 if worn
