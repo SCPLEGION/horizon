@@ -356,6 +356,8 @@ pub struct PlayerMotion {
     pub teleported: bool,
     pub events: Vec<MotionEvent>,
     pub attributes: LiveAttributes<Box<dyn FnMut() -> i32>>,
+    /// NeoForge's `SWIM_SPEED` attribute (base 1): a mod's gear scales the water thrust with it (`native_gear_attributes`).
+    pub swim_speed: f64,
     pub impulse: ImpulseContext,
     /// `ServerPlayer.spawnExtraParticlesOnFall`: a mace smash on a grounded
     /// target makes the next landing throw up the block below.
@@ -572,6 +574,7 @@ impl PlayerMotion {
             teleported: false,
             events: Vec::new(),
             attributes,
+            swim_speed: 1.0,
             fluids: PlayerFluids::default(),
             in_powder_snow: false,
             was_in_powder_snow: false,

@@ -976,9 +976,23 @@ impl Game<'_> {
             }
         }
         self.native_gear_attributes(&mut wanted);
+        // NeoForge's `SWIM_SPEED` (base 1) is no attribute of the game's: it is kept on the player for the water thrust.
+        let (mut add, mut base, mut total) = (0.0, 0.0, 1.0);
+        for (attr, _, amount, op) in &wanted {
+            if attr != "neoforge:swim_speed" {
+                continue;
+            }
+            match op.as_str() {
+                "add_multiplied_total" => total *= 1.0 + amount,
+                "add_multiplied_base" => base += amount,
+                _ => add += amount,
+            }
+        }
+        let swim_speed = ((1.0 + add) * (1.0 + base) * total).clamp(0.0, 1024.0);
         let Some(p) = self.player.as_mut() else {
             return;
         };
+        p.swim_speed = swim_speed;
         for (attr, id, _, op) in std::mem::take(&mut self.potions.enchant_modifiers) {
             let _ = p.set_modifier(&attr, &id, 0.0, &op, false);
         }

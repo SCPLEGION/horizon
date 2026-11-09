@@ -13,6 +13,10 @@ pub trait LivingFluidWorld: LivingAirWorld {
     fn water_slow_down(&mut self) -> Result<f32, Self::Error>;
     fn water_movement_efficiency(&mut self) -> Result<f64, Self::Error>;
     fn dolphins_grace(&mut self) -> Result<bool, Self::Error>;
+    /// NeoForge's `SWIM_SPEED` attribute, the factor of the base water thrust (1 for vanilla).
+    fn swim_speed(&mut self) -> Result<f32, Self::Error> {
+        Ok(1.0)
+    }
     fn fluid_height(&mut self, tag: TravelFluidTag) -> Result<f64, Self::Error>;
     fn fluid_jump_threshold(&mut self) -> Result<f64, Self::Error>;
     fn is_free(&mut self, offset: Vec3) -> Result<bool, Self::Error>;
@@ -65,7 +69,7 @@ pub fn travel_in_water<W: LivingFluidWorld>(
     } else {
         world.water_slow_down()?
     };
-    let mut speed = 0.02f32;
+    let mut speed = 0.02f32 * world.swim_speed()?;
     let mut efficiency = world.water_movement_efficiency()? as f32;
     if !world.on_ground()? {
         efficiency *= 0.5;
