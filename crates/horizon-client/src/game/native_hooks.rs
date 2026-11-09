@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 74 adds `native_game_rule`: the value of a game rule by name (Mekanism's Electric Pump asks whether water and lava sources convert).
 //! API 73 adds `native_set_block_signal`: a mod's block (declared `"signal_source": true`) powers its neighbours with a level of its own, 0 to 15 (Mekanism's Laser Amplifier).
 //! API 72 adds `native_drink_item`: a mod's item that is drunk for some ticks (the first-person drinking pose and the use duration; Mekanism's Canteen).
 //! API 71 adds `native_shears_trim`: like `native_shears_used`, for a block sheared (a hive, a pumpkin; Mekanism's `shearTrim` energy).
@@ -279,7 +280,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 73;
+pub(crate) const NATIVE_HOOKS_API: u32 = 74;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1872,6 +1873,14 @@ impl Game<'_> {
             let block = b.block(state);
             b.update_neighbors_at(level, ticks, at, block);
         });
+    }
+    /// The value of the game rule `name` (a boolean rule is 0 or 1), or `None` for a name that is no rule. API 74.
+    pub(super) fn native_game_rule(&self, name: &str) -> Option<i32> {
+        use horizon_client_core::gamerules::Value;
+        match self.ui.rules.get(name)? {
+            Value::Bool(v) => Some(i32::from(v)),
+            Value::Int(v) => Some(v),
+        }
     }
     /// Sets the block at `pos` to `block` with the given properties (every
     /// other property at its default), as `Level.setBlock` with
