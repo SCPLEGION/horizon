@@ -343,10 +343,18 @@ fn world_worldgen_overrides(
         .iter()
         .filter_map(|id| packs.iter().find(|p| &p.id == id))
         .collect();
-    let (overrides, warnings) =
+    let (mut overrides, warnings) =
         horizon_client::datapack::worldgen_overrides(&enabled, |b| biomes.contains(b));
     for warning in warnings {
         log::warn!("Horizon: data pack worldgen: {warning}");
+    }
+    // A native mod's files sit under the packs': an id a pack gives wins.
+    let mut mod_entries = Vec::new();
+    super::Game::native_worldgen_entries(world_root, &mut mod_entries);
+    for (bundle, id, json) in mod_entries {
+        if !overrides.entries(&bundle).any(|(have, _)| have == id) {
+            overrides.set(&bundle, &id, json);
+        }
     }
     overrides
 }
