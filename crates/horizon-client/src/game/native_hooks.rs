@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: a mod's game event, which sculk sensors and wardens hear (Mekanism's jetpack burn and gravity modulation).
 //! API 61 adds `native_may_fly`: a mod lets the player fly like in creative mode (Mekanism's MekaSuit Gravitational Modulating Unit).
 //! API 60 adds `native_fill_corners` (a rectangle shaded between four colours) and `native_gui_player` (the player model wearing given gear, in a GUI box): Mekanism's colour picker window.
 //! API 59 adds `native_shears_used`: the item that acts as shears was used to shear, for the mod to charge it (Mekanism's Meka-Tool spends energy).
@@ -267,7 +268,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 61;
+pub(crate) const NATIVE_HOOKS_API: u32 = 62;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
