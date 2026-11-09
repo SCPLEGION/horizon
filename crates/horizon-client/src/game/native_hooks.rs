@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 69 adds `native_timed_effects` and `native_speed_up_effect`: the player's timed status effects by category, and counting one down a tick (Mekanism's MekaSuit Inhalation Purification Unit).
 //! API 68 adds `native_block_transform` and `native_apply_block_transform`: what a vanilla axe, hoe or shovel would do to a block, and doing it (Mekanism's Meka-Tool Farming Unit).
 //! API 67 adds `native_worldgen_entries`: a mod supplies worldgen files (placed features, configured features) over the generator's bundle when a world's levels open (Mekanism's ore and salt generation from its world config).
 //! API 66 adds `native_bow_item` and `native_bow_shot`: a mod's item that is drawn and let go like a bow, and its shot (Mekanism's Electric Bow spends energy and burns in fire mode).
@@ -274,7 +275,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 68;
+pub(crate) const NATIVE_HOOKS_API: u32 = 69;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2102,6 +2103,16 @@ impl Game<'_> {
         let held = self.held().cloned().unwrap_or_else(|| ItemStack::new("minecraft:air", 1));
         self.transform_block_to(&held, new, sound, loot, particle, pos, face)
             .is_ok()
+    }
+    /// The acting player's timed status effects as (index, category: 0 beneficial, 1 neutral, 2 harmful). Server-side. API 69.
+    #[allow(dead_code)]
+    pub(super) fn native_timed_effects(&self) -> Vec<(usize, u8)> {
+        self.potions.effects.timed()
+    }
+    /// Counts the effect at `index` (from `native_timed_effects`) one tick down, without its periodic effect. Server-side. API 69.
+    #[allow(dead_code)]
+    pub(super) fn native_speed_up_effect(&mut self, index: usize) {
+        self.potions.effects.speed_up(index);
     }
     /// The first block hit along the segment `from`..`to`: the point, the block and the face's normal.
     /// API 50.
