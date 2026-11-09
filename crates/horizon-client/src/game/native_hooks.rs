@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 68 adds `native_block_transform` and `native_apply_block_transform`: what a vanilla axe, hoe or shovel would do to a block, and doing it (Mekanism's Meka-Tool Farming Unit).
 //! API 67 adds `native_worldgen_entries`: a mod supplies worldgen files (placed features, configured features) over the generator's bundle when a world's levels open (Mekanism's ore and salt generation from its world config).
 //! API 66 adds `native_bow_item` and `native_bow_shot`: a mod's item that is drawn and let go like a bow, and its shot (Mekanism's Electric Bow spends energy and burns in fire mode).
 //! API 65 adds `native_item_bars`: a mod's item shows its own bars in a slot (Mekanism's energy, chemical and fluid bars).
@@ -273,7 +274,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 67;
+pub(crate) const NATIVE_HOOKS_API: u32 = 68;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2071,6 +2072,36 @@ impl Game<'_> {
         if self.using.is_none() {
             self.using = Some((self.held_slot(), 0));
         }
+    }
+    /// What the block transformer `transformer` (`minecraft:axe`, `minecraft:hoe` or `minecraft:shovel`) would do to the block
+    /// at `pos` clicked on `face`, without doing it: the state it becomes and the durability a use costs
+    /// (`itemDamagePerUse`). `None` when it does nothing. API 67.
+    #[allow(dead_code)]
+    pub(super) fn native_block_transform(
+        &self,
+        transformer: &str,
+        pos: [i32; 3],
+        face: [i32; 3],
+    ) -> Option<(BlockStateId, u32)> {
+        self.block_transform_by(transformer, pos, face)
+            .map(|(state, _, _, damage, _)| (state, damage))
+    }
+    /// Does `native_block_transform`'s change at `pos`: the block, its sound, particle, loot and game event, with no wear on
+    /// the held item. Returns whether it changed anything. Server-side. API 67.
+    #[allow(dead_code)]
+    pub(super) fn native_apply_block_transform(
+        &mut self,
+        transformer: &str,
+        pos: [i32; 3],
+        face: [i32; 3],
+    ) -> bool {
+        let Some((new, sound, loot, _, particle)) = self.block_transform_by(transformer, pos, face)
+        else {
+            return false;
+        };
+        let held = self.held().cloned().unwrap_or_else(|| ItemStack::new("minecraft:air", 1));
+        self.transform_block_to(&held, new, sound, loot, particle, pos, face)
+            .is_ok()
     }
     /// The first block hit along the segment `from`..`to`: the point, the block and the face's normal.
     /// API 50.
