@@ -391,6 +391,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_trim"
     },
     {
+      "name": "drink_item",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_drink_item"
+    },
+    {
       "name": "bow_item",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_bow_item"
