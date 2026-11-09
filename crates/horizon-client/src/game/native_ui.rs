@@ -55,6 +55,54 @@ impl Game<'_> {
         let at = self.native_cursor();
         self.native_ui_click(&id, at, code, pressed);
     }
+    /// Draws the mod's world model `model` (`native_world_models`) into the GUI as a picture-in-picture
+    /// (`PictureInPictureRenderer`): standing with its feet at `origin` (GUI pixels), `size` pixels to the
+    /// block, turned `yaw` degrees about the vertical axis through its centre, lit like an entity in a UI,
+    /// and cut off outside `clip` (`[x0, y0, x1, y1]`). `texture` is the atlas sprite to wear in place of the
+    /// model's own (a skin); a missing one falls back to it. False when there is no such model. API 49.
+    pub(super) fn native_gui_model(
+        &self,
+        batch: &mut HudBatch,
+        model: &str,
+        texture: Option<&str>,
+        clip: [f32; 4],
+        origin: [f32; 2],
+        size: f32,
+        yaw: f32,
+    ) -> bool {
+        let Some((part, own)) = self.armor_stand_assets.world_models.get(model) else {
+            return false;
+        };
+        let sprites = &self.gui.atlas.sprites;
+        let sprite = texture
+            .filter(|t| sprites.contains_key(*t))
+            .unwrap_or(own.as_str());
+        let Some(r) = sprites.get(sprite) else {
+            return false;
+        };
+        let mut verts = Vec::new();
+        horizon_client::mobs::render::draw(
+            part,
+            glam::Mat4::from_rotation_y(yaw.to_radians()),
+            &horizon_client::mobs::anim::Poses::new(part),
+            [r.u0, r.v0, r.u1, r.v1],
+            u32::MAX,
+            240 | 240 << 8,
+            0,
+            &mut verts,
+        );
+        // The renderer's pose: translate to the box, scale (size, size, -size), then Rz(pi) turns the model up.
+        let gui = glam::Mat4::from_translation(glam::Vec3::new(origin[0], origin[1], 0.0))
+            * glam::Mat4::from_scale(glam::Vec3::new(size, size, -size))
+            * glam::Mat4::from_rotation_z(std::f32::consts::PI);
+        let quads = super::perspective::player_preview_quads(verts, gui, None, sprites);
+        let start = batch.vertices.len();
+        for (_, p, uv, color) in quads {
+            batch.quad_3d(p, uv, color);
+        }
+        batch.depth_since(start, clip);
+        true
+    }
     pub(super) fn native_ui_wheel_event(&mut self, steps: f32) {
         if let Some(id) = self.mod_ui.clone() {
             self.native_ui_wheel(&id, steps);
