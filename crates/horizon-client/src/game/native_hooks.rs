@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 66 adds `native_is_bow` and `native_bow_shot`: a mod's item that is drawn and let go like a bow, and its shot (Mekanism's Electric Bow spends energy and burns in fire mode).
 //! API 65 adds `native_item_bars`: a mod's item shows its own bars in a slot (Mekanism's energy, chemical and fluid bars).
 //! API 64 adds `native_online_players` (the players a server hosts) and `native_remote_players` (the other players a client sees, with where): a mod keeps what other players wear in sync and sounds from them (Mekanism's jetpack and scuba mask sounds).
 //! API 63 adds `native_drop_item`: a mod drops a stack as an item thrown out of a block face (Mekanism's Configurator emptying a machine).
@@ -271,7 +272,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 65;
+pub(crate) const NATIVE_HOOKS_API: u32 = 66;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1412,6 +1413,17 @@ impl Game<'_> {
     /// Client-side, every frame. API 57.
     pub(super) fn native_worn_tint(&self, stack: &ItemStack, tint: &mut Option<u32>) {
         let _ = (stack, tint);
+    }
+    /// Whether the mod's item `item` is a bow: it is drawn and let go as `minecraft:bow` is (arrows from the inventory, power
+    /// from the draw time, the bow FOV zoom). Asked on both sides. API 66.
+    pub(super) fn native_is_bow(&self, item: &str) -> bool {
+        let _ = item;
+        false
+    }
+    /// A mod bow `bow` is let go with an arrow to shoot: set `allow` to false to keep the arrow (no energy, say), and
+    /// `flame` to shoot it burning. Server-side, with the player swapped in. API 66.
+    pub(super) fn native_bow_shot(&mut self, bow: &ItemStack, flame: &mut bool, allow: &mut bool) {
+        let _ = (bow, flame, allow);
     }
     /// Set `shears` when the stack in hand works as shears (`ItemAbilities.SHEARS_*`): the game then treats it as
     /// `minecraft:shears` for shearing mobs, hives, pumpkins and leads. Asked on both sides. API 58.

@@ -58,6 +58,7 @@ impl Game<'_> {
             let item = match &*stack.item {
                 "minecraft:bow" => UseItem::Bow,
                 "minecraft:spyglass" => UseItem::Spyglass,
+                id if self.native_is_bow(id) => UseItem::Bow,
                 _ => UseItem::Other,
             };
             Some((item, ticks as i32))

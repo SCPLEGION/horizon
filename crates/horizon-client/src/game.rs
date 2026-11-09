@@ -5248,7 +5248,7 @@ impl Game<'_> {
             self.use_instrument(&stack);
             return Ok(true);
         }
-        if !on_block && &*stack.item == "minecraft:bow" {
+        if !on_block && (&*stack.item == "minecraft:bow" || self.native_is_bow(&stack.item)) {
             if self.using.is_none()
                 && (self.creative || self.projectile_slot("minecraft:bow").is_some())
             {
@@ -5678,6 +5678,7 @@ impl Game<'_> {
     pub(super) fn release_used_item(&mut self, stack: &ItemStack, ticks: u32, hand_changed: bool) {
         match &*stack.item {
             "minecraft:bow" if !hand_changed => self.release_bow(ticks),
+            item if !hand_changed && self.native_is_bow(item) => self.release_bow(ticks),
             "minecraft:trident" if !hand_changed => self.release_trident(ticks),
             "minecraft:spyglass" => self.stop_spyglass(),
             _ => {}
@@ -11688,6 +11689,14 @@ impl Game<'_> {
         let Some(eye) = self.eye_position() else {
             return;
         };
+        // A mod's bow pays for the shot (and may burn the arrow) once an arrow is there to shoot.
+        let (mut flame, mut allow) = (false, true);
+        if let Some(bow) = self.held().cloned().filter(|b| &*b.item != "minecraft:bow") {
+            self.native_bow_shot(&bow, &mut flame, &mut allow);
+            if !allow {
+                return;
+            }
+        }
         // BowItem.shootProjectile: shootFromRotation(power * 3, inaccuracy 1).
         let p = Vec3::new(eye[0], eye[1] - 0.1, eye[2]);
         let ammo = arrow_slot
@@ -11720,7 +11729,9 @@ impl Game<'_> {
             a.fired_from_weapon = weapon;
         }
         // Flame: the arrow is spawned burning (EnchantmentHelper.onProjectileSpawned).
-        if let Some(seconds) = self.bow_projectile_ignite()
+        if let Some(seconds) = self
+            .bow_projectile_ignite()
+            .or(flame.then_some(5.0))
             && let Some(a) = arrow.arrow.as_mut()
         {
             a.ignite_for_seconds(seconds);
