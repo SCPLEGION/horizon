@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 75 adds `native_block_properties`, `native_take_block_entity` and `native_put_block_entity`: a block's whole state and its block entity as NBT, taken out without drops and put back (Mekanism's Cardboard Box).
 //! API 74 adds `native_game_rule`: the value of a game rule by name (Mekanism's Electric Pump asks whether water and lava sources convert).
 //! API 73 adds `native_set_block_signal`: a mod's block (declared `"signal_source": true`) powers its neighbours with a level of its own, 0 to 15 (Mekanism's Laser Amplifier).
 //! API 72 adds `native_drink_item`: a mod's item that is drunk for some ticks (the first-person drinking pose and the use duration; Mekanism's Canteen).
@@ -280,7 +281,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 74;
+pub(crate) const NATIVE_HOOKS_API: u32 = 75;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1881,6 +1882,53 @@ impl Game<'_> {
             Value::Bool(v) => Some(i32::from(v)),
             Value::Int(v) => Some(v),
         }
+    }
+    /// Every property of the block at `pos` (`facing` and `waterlogged` of a chest), in the registry's order. API 75.
+    pub(super) fn native_block_properties(&self, pos: [i32; 3]) -> Vec<(String, String)> {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        self.pack
+            .assets
+            .registry
+            .state(state)
+            .map(|s| s.properties.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect())
+            .unwrap_or_default()
+    }
+    /// Takes the block entity at `pos` out of the world, as it is saved (its `id`, `x`, `y`, `z` and contents), and
+    /// returns it; nothing drops and nothing is told. None where there is none. Put back with
+    /// `native_put_block_entity`. API 75.
+    pub(super) fn native_take_block_entity(
+        &mut self,
+        pos: [i32; 3],
+    ) -> Option<horizon_world::nbt::Compound> {
+        use horizon_world::nbt::Tag;
+        let key = (pos[0], pos[1], pos[2]);
+        let name = self.native_block(pos);
+        let entity = self.world.block_entities.remove(&key)?;
+        self.world.block_names.remove(&key);
+        self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        match horizon_client::save::encode_block_entity(key, &entity, &name) {
+            Tag::Compound(c) => Some(c),
+            _ => None,
+        }
+    }
+    /// Loads a block entity saved by `native_take_block_entity` at `pos` (its position fields are set to it), as a
+    /// chunk does. False when it is not a block entity this game knows. API 75.
+    pub(super) fn native_put_block_entity(
+        &mut self,
+        pos: [i32; 3],
+        mut nbt: horizon_world::nbt::Compound,
+    ) -> bool {
+        use horizon_world::nbt::Tag;
+        for (k, v) in [("x", pos[0]), ("y", pos[1]), ("z", pos[2])] {
+            nbt.insert(k.into(), Tag::Int(v));
+        }
+        let Some((key, entity)) = horizon_client::save::decode_block_entity(&Tag::Compound(nbt))
+        else {
+            return false;
+        };
+        self.world.block_entities.insert(key, entity);
+        self.world.modified.insert((key.0 >> 4, key.2 >> 4));
+        true
     }
     /// Sets the block at `pos` to `block` with the given properties (every
     /// other property at its default), as `Level.setBlock` with
