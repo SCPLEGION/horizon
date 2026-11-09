@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 64 adds `native_online_players` (the players a server hosts) and `native_remote_players` (the other players a client sees, with where): a mod keeps what other players wear in sync and sounds from them (Mekanism's jetpack and scuba mask sounds).
 //! API 63 adds `native_drop_item`: a mod drops a stack as an item thrown out of a block face (Mekanism's Configurator emptying a machine).
 //! API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: a mod's game event, which sculk sensors and wardens hear (Mekanism's jetpack burn and gravity modulation).
 //! API 61 adds `native_may_fly`: a mod lets the player fly like in creative mode (Mekanism's MekaSuit Gravitational Modulating Unit).
@@ -269,7 +270,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 63;
+pub(crate) const NATIVE_HOOKS_API: u32 = 64;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2293,6 +2294,34 @@ impl Game<'_> {
             return 0.0;
         }
         (before - m.health.max(0.0)).max(0.0)
+    }
+    /// The UUIDs of the players this server hosts (guests that have joined; empty on a plain client).
+    /// API 64.
+    #[allow(dead_code)]
+    pub(super) fn native_online_players(&self) -> Vec<u128> {
+        self.lan.as_ref().map_or_else(Vec::new, |host| {
+            host.hub
+                .guests
+                .iter()
+                .filter(|g| g.placed)
+                .map(|g| g.uuid)
+                .collect()
+        })
+    }
+    /// The other players this client sees in the level: profile UUID and where their feet are. API 64.
+    #[allow(dead_code)]
+    pub(super) fn native_remote_players(&self) -> Vec<(u128, [f64; 3])> {
+        let Some(r) = &self.remote else {
+            return Vec::new();
+        };
+        self.mobs
+            .iter()
+            .filter(|m| !m.removed)
+            .filter_map(|m| {
+                let uuid = r.level_player(m.id as i32)?;
+                Some((uuid, [m.position.x, m.position.y, m.position.z]))
+            })
+            .collect()
     }
     /// Drops a stack as an item in the world at `at`, thrown out of the block face `face` (a
     /// direction as three ints): `Block.popResourceFromFace` (Mekanism's Configurator emptying a
