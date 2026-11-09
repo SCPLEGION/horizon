@@ -245,7 +245,7 @@ impl Game<'_> {
         let existing: Vec<usize> = (0..self.mobs.len())
             .filter(|&i| self.mobs[i].extra.leash == Some(Holder::Knot(knot_pos)))
             .collect();
-        let held_item = self.held().map(|s| s.item.to_string());
+        let held_item = self.held().map(|s| self.acting_item_id(s));
         let sneaking = self.keys.contains(&winit::keyboard::KeyCode::ShiftLeft);
         // Shears snip every lead on the knot.
         if held_item.as_deref() == Some("minecraft:shears") && !existing.is_empty() {

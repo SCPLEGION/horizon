@@ -232,6 +232,8 @@ API 50 adds a mod item's continuous use: `native_use_item` claims the click and 
 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
 
+API 58 adds `native_acts_as_shears(stack, shears)`: set `shears` when the stack in hand works as shears; the game then treats it as `minecraft:shears` when it shears mobs, hives, pumpkins and leads (Mekanism's Meka-Tool with a Shearing Unit).
+
 API 57 adds `native_worn_tint(stack, tint)`: the colour (`0xAARRGGBB`) the opaque mod models worn on a piece of gear are drawn in (the glowing and translucent ones keep theirs), asked per worn stack every frame on the client (Mekanism's Color Modulation Unit).
 
 API 56 adds `native_fog(fog_type, fog)`: the frame's fog after the game set it up (`fog_type` 0 atmospheric, 1 water, 2 lava, 3 powder snow), for the mod to change its colour and distances, every frame on the client (Mekanism's Vision Enhancement Unit).

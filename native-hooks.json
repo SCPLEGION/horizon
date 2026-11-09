@@ -374,6 +374,11 @@
       "name": "worn_tint",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_worn_tint"
+    },
+    {
+      "name": "acts_as_shears",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_acts_as_shears"
     }
   ]
 }

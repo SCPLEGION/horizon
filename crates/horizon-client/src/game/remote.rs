@@ -6001,7 +6001,7 @@ impl Game<'_> {
         // BeehiveBlock.useItemOn: shears or a glass bottle on a full hive
         // (honey level 5) is SUCCESS, so the click ends after UseItemOn and
         // no UseItem follows (the server does the harvest, see `use_beehive`).
-        if held.is_some_and(|s| matches!(&*s.item, "minecraft:shears" | "minecraft:glass_bottle"))
+        if held.is_some_and(|s| matches!(self.acting_item_id(s).as_str(), "minecraft:shears" | "minecraft:glass_bottle"))
             && self
                 .hive_state(hit.pos)
                 .is_some_and(|(honey, _)| honey == Some(5))
