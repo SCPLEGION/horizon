@@ -386,6 +386,16 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_used"
     },
     {
+      "name": "bow_item",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_bow_item"
+    },
+    {
+      "name": "bow_shot",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_bow_shot"
+    },
+    {
       "name": "may_fly",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_may_fly"
