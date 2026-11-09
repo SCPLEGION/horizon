@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 60 adds `native_may_fly`: a mod lets the player fly like in creative mode (Mekanism's MekaSuit Gravitational Modulating Unit).
 //! API 59 adds `native_shears_used`: the item that acts as shears was used to shear, for the mod to charge it (Mekanism's Meka-Tool spends energy).
 //! API 58 adds `native_acts_as_shears`: a mod's item that works as shears on mobs and blocks (Mekanism's Meka-Tool with a Shearing Unit).
 //! API 57 adds `native_worn_tint`: a mod tints the opaque worn models of a piece of gear (Mekanism's Color Modulation Unit).
@@ -260,7 +261,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 59;
+pub(crate) const NATIVE_HOOKS_API: u32 = 60;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1404,6 +1405,12 @@ impl Game<'_> {
     /// harvested, a lead cut): the mod charges it (energy) instead. Server-side, with the player swapped in. API 59.
     pub(super) fn native_shears_used(&mut self, stack: &ItemStack) {
         let _ = stack;
+    }
+    /// Set `may_fly` to let the player fly as in creative mode (`Abilities.mayfly`: double jump toggles flying), asked
+    /// whenever the game sets the player's abilities, on both sides, with the player swapped in on the server. Survival
+    /// players only: creative and spectator fly anyway. API 60.
+    pub(super) fn native_may_fly(&self, may_fly: &mut bool) {
+        let _ = may_fly;
     }
     /// The tool's wear for a shearing: a mod's item that acts as shears pays another way (`native_shears_used`), any other
     /// item takes one point of damage.
