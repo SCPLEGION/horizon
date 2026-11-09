@@ -783,6 +783,9 @@ struct GameLevel<'w> {
     client_side: bool,
     /// Only the integrated or dedicated server dispatches native observations.
     native_authoritative: bool,
+    /// Blocks that stopped being what they were while the level ran, for
+    /// `native_block_removed` once it is done (API 43).
+    native_removed: &'w std::cell::RefCell<Vec<(BlockPos, BlockStateId, BlockStateId)>>,
     native_particles: &'w mut Vec<(
         &'static str,
         horizon_client::particles::ParticleOptions,
@@ -985,6 +988,9 @@ impl GameLevel<'_> {
 impl LevelAccess for GameLevel<'_> {
     fn observe_block_changed(&self, pos: BlockPos, old: BlockStateId, new: BlockStateId) {
         if self.native_authoritative {
+            if self.facts.get(old).name != self.facts.get(new).name {
+                self.native_removed.borrow_mut().push((pos, old, new));
+            }
             self.native_block_changed(self.dimension, pos, old, new);
         }
     }
@@ -2110,6 +2116,8 @@ struct Game<'a> {
     /// Item entities spawned and block entities removed while the block
     /// behaviour ran (spilled contents, popped resources).
     spill: spill::Spill,
+    /// See `GameLevel::native_removed`.
+    native_removed: std::cell::RefCell<Vec<(BlockPos, BlockStateId, BlockStateId)>>,
     /// The recipe book of the open screen (game/recipe_book.rs).
     recipe_ui: recipe_book::RecipeUi,
     /// The horse inventory (game/mount_menu.rs).
@@ -3374,14 +3382,34 @@ impl Game<'_> {
             lid_openers: &self.lid_openers,
             client_side: self.remote.is_some(),
             native_authoritative: self.serving.is_some() || self.options.dedicated.is_some(),
+            native_removed: &self.native_removed,
             native_particles: &mut self.creatures.lan_particles,
         };
         let result = f(self.res.behaviours(), &mut level, &mut self.block_ticks);
         self.flush_spill();
+        self.flush_native_removed();
         if self.lan.is_some() {
             self.flush_lan_particles();
         }
         result
+    }
+    /// `native_block_removed` for each block that changed into another while
+    /// the level ran (the hook may set blocks, which can queue more).
+    fn flush_native_removed(&mut self) {
+        loop {
+            let removed = std::mem::take(&mut *self.native_removed.borrow_mut());
+            if removed.is_empty() {
+                return;
+            }
+            for (pos, old, new) in removed {
+                let registry = self.pack.assets.registry;
+                let Some(old) = registry.state(old).cloned() else {
+                    continue;
+                };
+                let new = self.res.facts().get(new).name.to_string();
+                self.native_block_removed([pos.x, pos.y, pos.z], &old.name, &old.properties, &new);
+            }
+        }
     }
     /// Level.setBlock(pos, state, UPDATE_ALL) with neighbour/shape updates.
     fn level_set(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
@@ -4623,6 +4651,14 @@ impl Game<'_> {
         }
         self.stats.add("used", &stack.item, 1);
     }
+    /// `native_block_redirect` for the block at `pos`: where a click or
+    /// break there really acts.
+    fn redirected_block(&self, pos: [i32; 3]) -> [i32; 3] {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        let mut to = None;
+        self.native_block_redirect(pos, state, &mut to);
+        to.unwrap_or(pos)
+    }
     fn break_block(&mut self, pos: [i32; 3]) -> Result<()> {
         self.lan_break_pos = Some(pos);
         let broken = self.with_player_actor(|game| game.break_block_as_player(pos));
@@ -4646,6 +4682,8 @@ impl Game<'_> {
         {
             return Ok(());
         }
+        // Native mods: a filler block's break is its owner's.
+        let pos = self.redirected_block(pos);
         // ServerPlayerGameMode.destroyBlock.
         let state = self.world.block(pos[0], pos[1], pos[2]);
         // Native mods, once the game allowed the break: a canceled one keeps
@@ -4908,6 +4946,17 @@ impl Game<'_> {
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts: a
         // canceled click does nothing (a guest's block is sent back).
+        // A sneaking player with something in hand places against the block
+        // clicked, so only a click that lets the block react is redirected.
+        let redirected = block_hit.map(|hit| Hit {
+            pos: if sneaking && hands_full {
+                hit.pos
+            } else {
+                self.redirected_block(hit.pos)
+            },
+            ..*hit
+        });
+        let block_hit = redirected.as_ref();
         if let Some(hit) = block_hit {
             let mut canceled = false;
             self.native_right_click_block(hit.pos, hit.face, &mut canceled);
@@ -13197,6 +13246,9 @@ impl Game<'_> {
         }
         if !title {
             self.world_box_geometry(camera, &mut entities);
+            self.world_model_geometry(camera, &mut entities);
+            self.world_item_geometry(camera, &mut entities);
+            self.world_quad_geometry(camera, &mut entities);
         }
         let weather = if !title && self.dim == Dim::Overworld && self.settings.horizon.weather {
             horizon_client::spans::time("weather", || self.weather_geometry(camera, alpha))
@@ -15499,6 +15551,7 @@ impl<'a> Game<'a> {
             ender_open: None,
             pending: Default::default(),
             spill: Default::default(),
+            native_removed: Default::default(),
             recipe_ui: Default::default(),
             mount_menu: Default::default(),
             hook: None,
