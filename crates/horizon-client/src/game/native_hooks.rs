@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 71 adds `native_shears_trim`: like `native_shears_used`, for a block sheared (a hive, a pumpkin; Mekanism's `shearTrim` energy).
 //! API 70 adds `native_attack_speed`: a mod's item adds to the attack speed of the player holding it (Mekanism's Atomic Disassembler and Meka-Tool, from their configs).
 //! API 69 adds `native_timed_effects` and `native_speed_up_effect`: the player's timed status effects by category, and counting one down a tick (Mekanism's MekaSuit Inhalation Purification Unit).
 //! API 68 adds `native_block_transform` and `native_apply_block_transform`: what a vanilla axe, hoe or shovel would do to a block, and doing it (Mekanism's Meka-Tool Farming Unit).
@@ -276,7 +277,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 70;
+pub(crate) const NATIVE_HOOKS_API: u32 = 71;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1449,6 +1450,10 @@ impl Game<'_> {
     pub(super) fn native_shears_used(&mut self, stack: &ItemStack) {
         let _ = stack;
     }
+    /// Like `native_shears_used`, for a block sheared (a beehive, a pumpkin): the mod charges the item. API 71.
+    pub(super) fn native_shears_trim(&mut self, stack: &ItemStack) {
+        let _ = stack;
+    }
     /// Set `may_fly` to let the player fly as in creative mode (`Abilities.mayfly`: double jump toggles flying), asked
     /// whenever the game sets the player's abilities, on both sides, with the player swapped in on the server. Survival
     /// players only: creative and spectator fly anyway. API 61.
@@ -1480,11 +1485,19 @@ impl Game<'_> {
     /// The tool's wear for a shearing: a mod's item that acts as shears pays another way (`native_shears_used`), any other
     /// item takes one point of damage.
     pub(super) fn shear_wear(&mut self) {
+        self.shear_wear_of(false);
+    }
+    /// `shear_wear` for a block (a hive, a pumpkin): a mod's shears pay through `native_shears_trim`.
+    pub(super) fn shear_wear_of(&mut self, block: bool) {
         if let Some(held) = self.held().cloned()
             && &*held.item != "minecraft:shears"
             && self.acting_item_id(&held) == "minecraft:shears"
         {
-            self.native_shears_used(&held);
+            if block {
+                self.native_shears_trim(&held);
+            } else {
+                self.native_shears_used(&held);
+            }
         } else {
             self.damage_held(1);
         }

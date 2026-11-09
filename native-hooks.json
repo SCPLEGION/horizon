@@ -386,6 +386,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_used"
     },
     {
+      "name": "shears_trim",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_trim"
+    },
+    {
       "name": "bow_item",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_bow_item"

@@ -78,7 +78,7 @@ impl Game<'_> {
         if let Some(carved) = carved {
             self.set_golem_head(pos, carved)?;
         }
-        self.shear_wear();
+        self.shear_wear_of(true);
         self.post_block_game_event("minecraft:shear", pos, self.sculk_actor(), None);
         self.stats.add("used", "minecraft:shears", 1);
         // ServerPlayerGameMode.useItemOn: the action was consumed.
