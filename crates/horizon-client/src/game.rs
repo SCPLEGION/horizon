@@ -5932,6 +5932,7 @@ impl Game<'_> {
         player.load_saved_state_once(&mut self.restore_player_state, &self.level)?;
         let spectator = self.mode == horizon_client::command::args::GameMode::Spectator;
         player.may_fly = self.creative || spectator;
+        self.native_may_fly(&mut player.may_fly);
         player.invulnerable = self.creative || spectator;
         player.spectator = spectator;
         if spectator {
@@ -6064,6 +6065,8 @@ impl Game<'_> {
         let spin_targets = self.spin_targets();
         let sprint_window = self.settings.sprint_window;
         self.sync_player_body();
+        let mut mod_may_fly = false;
+        self.native_may_fly(&mut mod_may_fly);
         let Some(player) = self.player.as_mut() else {
             // A dedicated server has no local player: the world still runs.
             if self.options.dedicated.is_some() {
@@ -6097,6 +6100,7 @@ impl Game<'_> {
         }
         let spectator = self.mode == horizon_client::command::args::GameMode::Spectator;
         player.may_fly = self.creative || spectator;
+        player.may_fly |= mod_may_fly;
         player.invulnerable = self.creative || spectator;
         player.spectator = spectator;
         player.spin_targets = spin_targets;
