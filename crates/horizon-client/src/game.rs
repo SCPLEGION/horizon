@@ -6901,13 +6901,16 @@ impl Game<'_> {
         let cooldown =
             horizon_client::cooldowns::group(stack, info.and_then(|i| i.use_cooldown.as_ref()));
         let partial = self.clock.fraction() as f32;
+        // BundleItem overrides the bar with its fullness.
+        let mut bar = horizon_client::bundle::Contents::of(self.items(), stack)
+            .map(|c| c.bar())
+            .unwrap_or_else(|| hud_overlays::damage_bar(stack.damage as i32, max_damage));
+        let mut extra: Vec<(i32, i32, u32)> = Vec::new();
+        self.native_item_bars(stack, &mut bar, &mut extra);
         let decorations = hud_overlays::ItemDecorations {
             count: stack.count,
             count_text,
-            // BundleItem overrides the bar with its fullness.
-            bar: horizon_client::bundle::Contents::of(self.items(), stack)
-                .map(|c| c.bar())
-                .unwrap_or_else(|| hud_overlays::damage_bar(stack.damage as i32, max_damage)),
+            bar,
             cooldown: self.cooldowns.percent(&cooldown, partial),
         };
         let mut draws = vec![hud_layout::GuiDraw::Push(vec![
@@ -6919,6 +6922,17 @@ impl Game<'_> {
             &decorations,
             &self.gui.atlas.font,
         ));
+        for (top, width, rgb) in extra {
+            let left = 2;
+            draws.push(hud_layout::fill(left, top, left + 13, top + 1, 0xFF00_0000));
+            draws.push(hud_layout::fill(
+                left,
+                top,
+                left + width.clamp(0, 13),
+                top + 1,
+                rgb | 0xFF00_0000,
+            ));
+        }
         draws.push(hud_layout::GuiDraw::Pop);
         hud_layout::paint(batch, &self.gui.atlas, &draws);
     }
