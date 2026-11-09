@@ -77,6 +77,9 @@ pub struct BlockProperties {
     /// (`noOcclusion`), whatever its template does. A pipe on a full-cube
     /// template with smaller `shapes` needs it.
     pub occludes: Option<bool>,
+    /// `true`: the block can power its neighbours (`isSignalSource`), whatever its template does; a native mod
+    /// sets the level per position with `native_set_block_signal`. API 73.
+    pub signal_source: Option<bool>,
 }
 
 /// Most boxes in one block shape (a combined machine model has up to a few dozen).

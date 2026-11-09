@@ -789,6 +789,22 @@ impl<'a> Plan<'a> {
             "gameplay-facts.json" => states(doc, "states", false, true)?,
             "block-behaviours.json" => {
                 states(doc, "states", false, false)?;
+                // `"signal_source": true`: the SIGNAL_SOURCE flag (bit 3) of the block's rows. The new
+                // blocks' rows are the last ones, in plan order.
+                if let Some(J::Arr(rows)) = doc.at("states") {
+                    let mut at = rows.len() - self.blocks.iter().map(|b| b.rename.states.len()).sum::<usize>();
+                    for b in &self.blocks {
+                        for _ in 0..b.rename.states.len() {
+                            if b.decl.properties.signal_source == Some(true)
+                                && let J::Arr(row) = &mut rows[at]
+                                && let Some(J::Num(flags)) = row.get_mut(1)
+                            {
+                                *flags = (flags.as_u64().unwrap_or(0) | 8).into();
+                            }
+                            at += 1;
+                        }
+                    }
+                }
                 let Some(J::Arr(blocks)) = doc.at("blocks") else {
                     return Err("no blocks".into());
                 };

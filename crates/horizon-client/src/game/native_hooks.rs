@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 73 adds `native_set_block_signal`: a mod's block (declared `"signal_source": true`) powers its neighbours with a level of its own, 0 to 15 (Mekanism's Laser Amplifier).
 //! API 72 adds `native_drink_item`: a mod's item that is drunk for some ticks (the first-person drinking pose and the use duration; Mekanism's Canteen).
 //! API 71 adds `native_shears_trim`: like `native_shears_used`, for a block sheared (a hive, a pumpkin; Mekanism's `shearTrim` energy).
 //! API 70 adds `native_attack_speed`: a mod's item adds to the attack speed of the player holding it (Mekanism's Atomic Disassembler and Meka-Tool, from their configs).
@@ -278,7 +279,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 72;
+pub(crate) const NATIVE_HOOKS_API: u32 = 73;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1847,6 +1848,30 @@ impl Game<'_> {
         };
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         self.with_level(|b, level, ticks| b.set_block(level, ticks, at, id, flags::UPDATE_ALL))
+    }
+    /// Makes the block at `pos` (a mod block declared `"signal_source": true`) power its neighbours with `level`, 0 to
+    /// 15, as `getSignal` of a graded source does; neighbours are told when it changes. Not saved: a mod sets it
+    /// again each tick. API 73.
+    pub(super) fn native_set_block_signal(&mut self, pos: [i32; 3], level: i32) {
+        let level = level.clamp(0, 15);
+        let changed = MOD_SIGNALS.with_borrow_mut(|m| {
+            let old = m.get(&pos).copied().unwrap_or(0);
+            if level == 0 {
+                m.remove(&pos);
+            } else {
+                m.insert(pos, level);
+            }
+            old != level
+        });
+        if !changed {
+            return;
+        }
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        self.with_level(|b, level, ticks| {
+            let block = b.block(state);
+            b.update_neighbors_at(level, ticks, at, block);
+        });
     }
     /// Sets the block at `pos` to `block` with the given properties (every
     /// other property at its default), as `Level.setBlock` with
@@ -3429,4 +3454,20 @@ fn sprite_box(
             u = u1;
         }
     }
+}
+
+thread_local! {
+    /// Signals mods give their blocks (`native_set_block_signal`), per level the thread runs.
+    static MOD_SIGNALS: std::cell::RefCell<std::collections::HashMap<[i32; 3], i32>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// The signal a mod gave the block at `pos`; 0 for none.
+pub(crate) fn mod_signal_at(pos: [i32; 3]) -> i32 {
+    MOD_SIGNALS.with_borrow(|m| if m.is_empty() { 0 } else { m.get(&pos).copied().unwrap_or(0) })
+}
+
+/// Swaps the signals of the level the thread runs with another's (`levels.rs`).
+pub(crate) fn swap_mod_signals(other: &mut std::collections::HashMap<[i32; 3], i32>) {
+    MOD_SIGNALS.with_borrow_mut(|m| std::mem::swap(m, other));
 }
