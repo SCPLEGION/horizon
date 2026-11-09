@@ -20,7 +20,8 @@ impl Game<'_> {
             Hand::Main => self.stack_in(self.selected),
             Hand::Off => self.offhand.as_ref(),
         };
-        let item = stack.map_or("", |s| &*s.item);
+        let acting = stack.map(|s| self.acting_item_id(s));
+        let item = acting.as_deref().unwrap_or("");
         let baby = m.is_baby();
         // Mob.checkAndHandleImportantInteractions: a lead, a named name tag,
         // a spawn egg of the mob's own kind.

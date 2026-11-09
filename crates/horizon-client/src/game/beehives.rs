@@ -202,7 +202,7 @@ impl Game<'_> {
     /// smokes the hive, the bees come out angry. True when it took the click.
     pub(super) fn use_beehive(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> Result<bool> {
         let Some(held) = held else { return Ok(false) };
-        let shears = &*held.item == "minecraft:shears";
+        let shears = self.acting_item_id(held) == "minecraft:shears";
         if !shears && &*held.item != "minecraft:glass_bottle" {
             return Ok(false);
         }

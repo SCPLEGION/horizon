@@ -14,7 +14,7 @@ impl Game<'_> {
         face: [i32; 3],
         held: Option<&ItemStack>,
     ) -> Result<bool> {
-        let Some(shears) = held.filter(|s| &*s.item == "minecraft:shears") else {
+        let Some(shears) = held.filter(|s| self.acting_item_id(s) == "minecraft:shears") else {
             return Ok(false);
         };
         let state = self.world.block(pos[0], pos[1], pos[2]);

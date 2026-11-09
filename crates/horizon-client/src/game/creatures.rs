@@ -4113,7 +4113,7 @@ impl Game<'_> {
             return Ok(true);
         }
         {
-            let item = self.held().map(|h| h.item.to_string()).unwrap_or_default();
+            let item = self.held().map(|h| self.acting_item_id(h)).unwrap_or_default();
             let used = self.held().cloned();
             if self.interact_leash(index, &item) {
                 if let Some(stack) = &used {
@@ -4131,7 +4131,7 @@ impl Game<'_> {
         let held = self.held().cloned();
         let item = held
             .as_ref()
-            .map(|h| h.item.to_string())
+            .map(|h| self.acting_item_id(h))
             .unwrap_or_default();
         // Bucketable.bucketMobPickup: a water bucket scoops up a fish, a
         // tadpole or an axolotl, with the data its bucket carries.
