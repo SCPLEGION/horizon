@@ -404,6 +404,11 @@
       "name": "item_bars",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_item_bars"
+    },
+    {
+      "name": "worldgen_entries",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_worldgen_entries"
     }
   ]
 }

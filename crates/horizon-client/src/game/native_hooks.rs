@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 67 adds `native_worldgen_entries`: a mod supplies worldgen files (placed features, configured features) over the generator's bundle when a world's levels open (Mekanism's ore and salt generation from its world config).
 //! API 66 adds `native_bow_item` and `native_bow_shot`: a mod's item that is drawn and let go like a bow, and its shot (Mekanism's Electric Bow spends energy and burns in fire mode).
 //! API 65 adds `native_item_bars`: a mod's item shows its own bars in a slot (Mekanism's energy, chemical and fluid bars).
 //! API 64 adds `native_online_players` (the players a server hosts) and `native_remote_players` (the other players a client sees, with where): a mod keeps what other players wear in sync and sounds from them (Mekanism's jetpack and scuba mask sounds).
@@ -272,7 +273,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 66;
+pub(crate) const NATIVE_HOOKS_API: u32 = 67;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1419,8 +1420,8 @@ impl Game<'_> {
     pub(super) fn native_bow_item(&self, item: &str, bow: &mut bool) {
         let _ = (item, bow);
     }
-    /// `native_bow_item` as a question.
-    pub(super) fn native_is_bow(&self, item: &str) -> bool {
+    /// `native_bow_item` as a question (a helper, not a hook point).
+    pub(super) fn mod_is_bow(&self, item: &str) -> bool {
         let mut bow = false;
         self.native_bow_item(item, &mut bow);
         bow
@@ -1445,6 +1446,16 @@ impl Game<'_> {
     /// players only: creative and spectator fly anyway. API 61.
     pub(super) fn native_may_fly(&self, may_fly: &mut bool) {
         let _ = may_fly;
+    }
+    /// Worldgen files a mod supplies when a level of the world at `world_root` opens, before its generator loads: push
+    /// (bundle, id, JSON text) into `entries`; bundles are `placed_features`, `features` and the other worldgen bundles a
+    /// data pack's `data/<ns>/worldgen/...` files go to. They replace the bundle's entry of that id and sit under the
+    /// world's data packs. There is no `self`: no `Game` exists yet when a world first opens. API 67.
+    pub(super) fn native_worldgen_entries(
+        world_root: &std::path::Path,
+        entries: &mut Vec<(String, String, String)>,
+    ) {
+        let _ = (world_root, entries);
     }
     /// The bars a stack shows over its slot (`IItemDecorator`, `Item.isBarVisible`): set `bar` to the width (0 to 13) and RGB
     /// colour of the main bar that replaces the damage bar (`None` keeps the game's), and push into `extra` more one-pixel
