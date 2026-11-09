@@ -85,13 +85,33 @@ pub fn frequency(event: &str) -> i32 {
     if let Some(i) = RESONANCE.iter().position(|e| *e == event) {
         return i as i32 + 1;
     }
+    if let Some((_, _, frequency)) = mod_event(event) {
+        return frequency;
+    }
     EVENTS
         .iter()
         .find(|(name, _)| *name == event)
         .map_or(0, |(_, f)| *f)
 }
+/// The game events a mod registers (`GameEventDeferredRegister`): id, notification radius, vibration frequency.
+static MOD_EVENTS: std::sync::RwLock<Vec<(&'static str, i32, i32)>> = std::sync::RwLock::new(Vec::new());
+/// Registers a mod's game event with its `GameEvent.notificationRadius` and its `vibration_frequencies` data map
+/// frequency (0 for none): sculk sensors and wardens react to it like to the vanilla events. Call it once, at start.
+pub fn register_mod_event(id: &'static str, radius: i32, frequency: i32) {
+    if let Ok(mut events) = MOD_EVENTS.write()
+        && !events.iter().any(|(e, _, _)| *e == id)
+    {
+        events.push((id, radius, frequency));
+    }
+}
+fn mod_event(event: &str) -> Option<(&'static str, i32, i32)> {
+    MOD_EVENTS.read().ok()?.iter().find(|(e, _, _)| *e == event).copied()
+}
 /// `GameEvent.notificationRadius`.
 pub fn notification_radius(event: &str) -> i32 {
+    if let Some((_, radius, _)) = mod_event(event) {
+        return radius;
+    }
     match event {
         "minecraft:jukebox_play" | "minecraft:jukebox_stop_play" => 10,
         SHRIEK => 32,
@@ -105,6 +125,7 @@ pub fn intern(event: &str) -> Option<&'static str> {
         .chain(EVENTS.iter().map(|(name, _)| name))
         .find(|e| **e == event)
         .copied()
+        .or_else(|| mod_event(event).map(|(id, _, _)| id))
 }
 /// `GameEventTags.VIBRATIONS`: every event with a frequency, resonance and flap.
 pub fn is_vibration(event: &str) -> bool {
