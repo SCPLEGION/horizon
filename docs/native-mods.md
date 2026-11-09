@@ -232,7 +232,7 @@ API 50 adds a mod item's continuous use: `native_use_item` claims the click and 
 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
 
-API 59 adds `native_shears_used(stack)`: the item that acts as shears was used to shear (where shears would take wear), so the mod charges it, as Mekanism's Meka-Tool does in energy; it takes no wear.
+API 59 adds `native_shears_used(stack)`: the item that acts as shears was used to shear (where shears would take wear: only a real shearing), so the mod charges it, as Mekanism's Meka-Tool does in energy; it takes no wear.
 
 API 58 adds `native_acts_as_shears(stack, shears)`: set `shears` when the stack in hand works as shears; the game then treats it as `minecraft:shears` when it shears mobs, hives, pumpkins and leads (Mekanism's Meka-Tool with a Shearing Unit).
 

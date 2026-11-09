@@ -135,7 +135,7 @@ impl Game<'_> {
             self.eject_sulfur_block(index);
             self.mobs[index].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
             self.sulfur_sound(index, "entity.sulfur_cube.eject");
-            self.damage_held_tool();
+            self.shear_wear();
             // CriteriaTriggers.PLAYER_SHEARED_EQUIPMENT with the body block.
             if let Some(body) = sheared {
                 let target = self.mob_entity(&self.mobs[index]);

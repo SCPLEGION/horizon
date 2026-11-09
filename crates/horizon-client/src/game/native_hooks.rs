@@ -1405,6 +1405,18 @@ impl Game<'_> {
     pub(super) fn native_shears_used(&mut self, stack: &ItemStack) {
         let _ = stack;
     }
+    /// The tool's wear for a shearing: a mod's item that acts as shears pays another way (`native_shears_used`), any other
+    /// item takes one point of damage.
+    pub(super) fn shear_wear(&mut self) {
+        if let Some(held) = self.held().cloned()
+            && &*held.item != "minecraft:shears"
+            && self.acting_item_id(&held) == "minecraft:shears"
+        {
+            self.native_shears_used(&held);
+        } else {
+            self.damage_held(1);
+        }
+    }
     /// The item id the interaction code sees for `stack`: `minecraft:shears` when a mod's item acts as shears.
     pub(super) fn acting_item_id(&self, stack: &ItemStack) -> String {
         let mut shears = false;
