@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 57 adds `native_worn_tint`: a mod tints the opaque worn models of a piece of gear (Mekanism's Color Modulation Unit).
 //! API 56 adds `native_fog`: a mod changes the frame's fog (Mekanism's MekaSuit Vision Enhancement Unit pushes the near plane back and tints it).
 //! API 55 adds `SlotRule::Check(fn(&ItemStack) -> bool)`: a slot that takes only stacks in a given state (Mekanism's hohlraum slot wants a full hohlraum).
 //! API 50 adds a mod item's continuous use (`native_using_tick`, `native_start_using`) and `native_clip`/`native_eye`: a ray through the world's blocks and the eyes of the player (Mekanism's Flamethrower).
@@ -257,7 +258,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 56;
+pub(crate) const NATIVE_HOOKS_API: u32 = 57;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1385,6 +1386,12 @@ impl Game<'_> {
     /// every frame. API 56.
     pub(super) fn native_fog(&self, fog_type: u8, fog: &mut horizon_client::fog::FogData) {
         let _ = (fog_type, fog);
+    }
+    /// The colour (`0xAARRGGBB`) a worn piece's opaque mod models (not the glowing or translucent ones) are drawn in,
+    /// asked for each worn piece when its layers are collected: set `tint` for the stack, leave it `None` for white.
+    /// Client-side, every frame. API 57.
+    pub(super) fn native_worn_tint(&self, stack: &ItemStack, tint: &mut Option<u32>) {
+        let _ = (stack, tint);
     }
     /// Set `glider` to let the worn gear glide as an elytra does (`GLIDING_FLIGHT`), asked every tick with the player
     /// swapped in. Server-side, for every player of the world. API 54.
