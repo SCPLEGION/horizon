@@ -233,6 +233,8 @@ API 50 adds a mod item's continuous use: `native_use_item` claims the click and 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
 
 API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: registers a mod's game event (`radius` its notification radius, `frequency` its vibration frequency, 0 for none), so sculk sensors, shriekers and wardens hear it when the game posts it; call it once at start (Mekanism's jetpack burn, gravity modulation and seismic vibration).
+API 73 adds `native_set_block_signal(pos, level)` (a mod block declared `"signal_source": true` powers its neighbours with a level 0 to 15 of its own, set again each tick, not saved; neighbours are told when it changes) and the declaration property `signal_source`: Mekanism's Laser Amplifier redstone output.
+
 API 72 adds `native_drink_item(item, ticks)` (set the use duration of a mod's item drunk like a potion; client): the first-person drinking pose of Mekanism's Canteen.
 
 API 71 adds `native_shears_trim(stack)` (like `native_shears_used`, for a block sheared: a hive, a pumpkin): Mekanism's `shearTrim`.

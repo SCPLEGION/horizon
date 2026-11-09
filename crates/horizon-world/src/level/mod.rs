@@ -438,6 +438,10 @@ pub trait LevelAccess {
     ) -> i32 {
         0
     }
+    /// Signal a native mod gives the signal-source block at `pos` (`native_set_block_signal`); 0 for none. API 73.
+    fn mod_signal(&self, _pos: BlockPos) -> i32 {
+        0
+    }
     /// Biome answers for a precipitation tick at the column of `pos` (see
     /// [`Precipitation`]); None skips snow/ice formation and cauldron filling.
     fn precipitation(&self, _pos: BlockPos) -> Option<Precipitation> {

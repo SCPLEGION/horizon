@@ -1079,6 +1079,9 @@ impl LevelAccess for GameLevel<'_> {
                 .map_or(0, |_| i32::from(frame.rotation % 8) + 1),
         )
     }
+    fn mod_signal(&self, pos: BlockPos) -> i32 {
+        native_hooks::mod_signal_at([pos.x, pos.y, pos.z])
+    }
     fn block_entity_signal(
         &self,
         pos: BlockPos,

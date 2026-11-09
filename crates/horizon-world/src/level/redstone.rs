@@ -60,7 +60,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
             Class::TrappedChest | Class::Jukebox => {
                 self.level.block_entity_signal(pos, state, direction)
             }
-            _ => Self::nibble(b.facts(state).weak, direction),
+            _ => Self::nibble(b.facts(state).weak, direction).max(self.level.mod_signal(pos)),
         }
     }
     /// `BlockState.getDirectSignal(level, pos, direction)`.
@@ -90,7 +90,7 @@ impl<L: LevelAccess + ?Sized> Sim<'_, L> {
                     0
                 }
             }
-            _ => Self::nibble(b.facts(state).strong, direction),
+            _ => Self::nibble(b.facts(state).strong, direction).max(self.level.mod_signal(pos)),
         }
     }
     pub(crate) fn comparator_output(&self, pos: BlockPos) -> i32 {
