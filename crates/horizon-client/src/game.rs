@@ -11003,6 +11003,20 @@ impl Game<'_> {
         pos: [i32; 3],
         face: [i32; 3],
     ) -> Option<(BlockStateId, String, Option<String>, u32, String)> {
+        let id = self
+            .res
+            .items()
+            .get(&stack.item)
+            .and_then(|i| i.block_transformer.clone())?;
+        self.block_transform_by(&id, pos, face)
+    }
+    /// `block_transform` for the transformer `id` (`minecraft:axe`, `minecraft:hoe`, `minecraft:shovel`) itself.
+    pub(super) fn block_transform_by(
+        &self,
+        id: &str,
+        pos: [i32; 3],
+        face: [i32; 3],
+    ) -> Option<(BlockStateId, String, Option<String>, u32, String)> {
         use horizon_client::block_transform::Around;
         struct Column<'w> {
             world: &'w World,
@@ -11022,11 +11036,6 @@ impl Game<'_> {
                 })
             }
         }
-        let id = self
-            .res
-            .items()
-            .get(&stack.item)
-            .and_then(|i| i.block_transformer.clone())?;
         // playerHasBlockingItemUseIntent: a shield in the off hand is raised
         // instead, unless sneaking.
         let shield = self
@@ -11054,7 +11063,7 @@ impl Game<'_> {
         let (_, t, state) =
             self.res
                 .transformers()
-                .apply(self.items(), registry, &id, face_name, &around)?;
+                .apply(self.items(), registry, id, face_name, &around)?;
         let new = registry.resolve(&state).ok()?;
         Some((
             new,
@@ -11084,6 +11093,24 @@ impl Game<'_> {
         else {
             return Ok(false);
         };
+        self.transform_block_to(stack, new, sound, loot, particle, pos, face)?;
+        // ItemStack.useOn: a use that acted counts as one of the item.
+        self.stats.add("used", &stack.item, 1);
+        self.damage_held(damage);
+        Ok(true)
+    }
+    /// The world side of `BlockTransformer.transformBlock`: the new state, its particle, loot and sound.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn transform_block_to(
+        &mut self,
+        stack: &ItemStack,
+        new: BlockStateId,
+        sound: String,
+        loot: Option<String>,
+        particle: String,
+        pos: [i32; 3],
+        face: [i32; 3],
+    ) -> Result<()> {
         // BlockTransformer.transformBlock: ITEM_USED_ON_BLOCK before the swap.
         self.trigger_block("minecraft:item_used_on_block", pos, stack);
         self.level_set(pos, new)?;
@@ -11105,11 +11132,8 @@ impl Game<'_> {
             1.0,
             1.0,
         );
-        // ItemStack.useOn: a use that acted counts as one of the item.
-        self.stats.add("used", &stack.item, 1);
-        self.damage_held(damage);
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), Some(new));
-        Ok(true)
+        Ok(())
     }
     fn set_state_named(&mut self, pos: [i32; 3], name: &str, keep: &[&str]) -> Result<bool> {
         let registry = &self.pack.assets.registry;
