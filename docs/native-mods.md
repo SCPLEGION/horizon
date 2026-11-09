@@ -233,6 +233,8 @@ API 50 adds a mod item's continuous use: `native_use_item` claims the click and 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
 
 API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: registers a mod's game event (`radius` its notification radius, `frequency` its vibration frequency, 0 for none), so sculk sensors, shriekers and wardens hear it when the game posts it; call it once at start (Mekanism's jetpack burn, gravity modulation and seismic vibration).
+API 71 adds `native_shears_trim(stack)` (like `native_shears_used`, for a block sheared: a hive, a pumpkin): Mekanism's `shearTrim`.
+
 API 70 adds `native_attack_speed(stack, add)` (the main-hand item's attack speed modifier; set `add` for a mod's item; both sides): Mekanism's Atomic Disassembler and Meka-Tool.
 API 69 adds `native_timed_effects()` (the acting player's timed status effects as index and category: 0 beneficial, 1 neutral, 2 harmful) and `native_speed_up_effect(index)` (counts one down a tick without its periodic effect): Mekanism's Inhalation Purification Unit.
 API 68 adds `native_block_transform(transformer, pos, face)` (what the transformer `minecraft:axe`, `minecraft:hoe` or `minecraft:shovel` would turn the block into, and the durability a use costs) and `native_apply_block_transform(transformer, pos, face)` (does it, with sound, particles and loot but no wear): Mekanism's Meka-Tool Farming Unit.

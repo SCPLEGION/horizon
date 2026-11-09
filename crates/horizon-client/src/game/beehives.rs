@@ -239,7 +239,7 @@ impl Game<'_> {
             }
             self.audio
                 .play("minecraft:block.beehive.shear", at, 1.0, 1.0);
-            self.shear_wear();
+            self.shear_wear_of(true);
             self.post_block_game_event("minecraft:shear", pos, self.sculk_actor(), None);
         } else {
             // shrink(1), then the honey bottle in the hand, the inventory or
