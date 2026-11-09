@@ -236,6 +236,7 @@ API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: 
 API 73 adds `native_set_block_signal(pos, level)` (a mod block declared `"signal_source": true` powers its neighbours with a level 0 to 15 of its own, set again each tick, not saved; neighbours are told when it changes) and the declaration property `signal_source`: Mekanism's Laser Amplifier redstone output.
 API 74 adds `native_game_rule(name)` (the value of a game rule, a boolean as 0 or 1; `None` for no such rule): Mekanism's Electric Pump asks whether water and lava sources convert.
 API 75 adds `native_block_properties(pos)`, `native_take_block_entity(pos)` and `native_put_block_entity(pos, nbt)`: a block's whole state, and its block entity taken out as saved (nothing drops) and loaded back: Mekanism's Cardboard Box.
+API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_block` with the state first adjusted to its neighbours (`Block.updateFromNeighbourShapes`), refused where that leaves air: Mekanism's Cardboard Box unboxing.
 
 API 72 adds `native_drink_item(item, ticks)` (set the use duration of a mod's item drunk like a potion; client): the first-person drinking pose of Mekanism's Canteen.
 

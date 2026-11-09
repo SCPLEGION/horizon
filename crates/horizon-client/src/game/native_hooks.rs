@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 76 adds `native_set_block_adjusted`: like `native_set_block`, with the state first adjusted to its neighbours as `Block.updateFromNeighbourShapes` does (a chest that was half of a double one becomes single when alone); refused where that leaves air (Mekanism's Cardboard Box unboxing).
 //! API 75 adds `native_block_properties`, `native_take_block_entity` and `native_put_block_entity`: a block's whole state and its block entity as NBT, taken out without drops and put back (Mekanism's Cardboard Box).
 //! API 74 adds `native_game_rule`: the value of a game rule by name (Mekanism's Electric Pump asks whether water and lava sources convert).
 //! API 73 adds `native_set_block_signal`: a mod's block (declared `"signal_source": true`) powers its neighbours with a level of its own, 0 to 15 (Mekanism's Laser Amplifier).
@@ -281,7 +282,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 75;
+pub(crate) const NATIVE_HOOKS_API: u32 = 76;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1929,6 +1930,35 @@ impl Game<'_> {
         self.world.block_entities.insert(key, entity);
         self.world.modified.insert((key.0 >> 4, key.2 >> 4));
         true
+    }
+    /// `native_set_block` with the state first adjusted to the neighbours at `pos`, as `Block.updateFromNeighbourShapes`
+    /// does (`BlockData.tryPlaceIntoWorld`): a chest packed as half of a double one is single when it comes back alone.
+    /// False, and nothing placed, when that adjustment leaves air or the block or a property does not exist. API 76.
+    pub(super) fn native_set_block_adjusted(
+        &mut self,
+        pos: [i32; 3],
+        block: &str,
+        properties: &[(&str, &str)],
+    ) -> bool {
+        let registry = self.pack.assets.registry;
+        let Some(mut state) = registry
+            .default_state(block)
+            .and_then(|d| registry.state(d).cloned())
+        else {
+            return false;
+        };
+        for (k, v) in properties {
+            state.properties.insert((*k).into(), (*v).into());
+        }
+        let Ok(id) = registry.resolve(&state) else {
+            return false;
+        };
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        let adjusted = self.with_level(|b, level, ticks| b.update_from_neighbour_shapes(level, ticks, at, id));
+        if self.res.facts().is_air(adjusted) {
+            return false;
+        }
+        self.with_level(|b, level, ticks| b.set_block(level, ticks, at, adjusted, flags::UPDATE_ALL))
     }
     /// Sets the block at `pos` to `block` with the given properties (every
     /// other property at its default), as `Level.setBlock` with
