@@ -265,7 +265,12 @@ impl Game<'_> {
             && self.stack_in(slot) == Some(stack)
         {
             let view = item_render::stack_view(stack);
-            let duration = use_duration(&self.pack.item_renderer.models.components(&view));
+            // A mod's bow is drawn like `minecraft:bow` (72000 ticks of use), so its pulling models follow the draw.
+            let duration = if self.mod_is_bow(&stack.item) {
+                72_000
+            } else {
+                use_duration(&self.pack.item_renderer.models.components(&view))
+            };
             owner.using_this_item = true;
             owner.use_duration = duration;
             owner.use_item_remaining_ticks = duration - ticks as i32;
