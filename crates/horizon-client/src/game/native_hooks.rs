@@ -6,7 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
-//! API 66 adds `native_is_bow` and `native_bow_shot`: a mod's item that is drawn and let go like a bow, and its shot (Mekanism's Electric Bow spends energy and burns in fire mode).
+//! API 66 adds `native_bow_item` and `native_bow_shot`: a mod's item that is drawn and let go like a bow, and its shot (Mekanism's Electric Bow spends energy and burns in fire mode).
 //! API 65 adds `native_item_bars`: a mod's item shows its own bars in a slot (Mekanism's energy, chemical and fluid bars).
 //! API 64 adds `native_online_players` (the players a server hosts) and `native_remote_players` (the other players a client sees, with where): a mod keeps what other players wear in sync and sounds from them (Mekanism's jetpack and scuba mask sounds).
 //! API 63 adds `native_drop_item`: a mod drops a stack as an item thrown out of a block face (Mekanism's Configurator emptying a machine).
@@ -1416,9 +1416,14 @@ impl Game<'_> {
     }
     /// Whether the mod's item `item` is a bow: it is drawn and let go as `minecraft:bow` is (arrows from the inventory, power
     /// from the draw time, the bow FOV zoom). Asked on both sides. API 66.
+    pub(super) fn native_bow_item(&self, item: &str, bow: &mut bool) {
+        let _ = (item, bow);
+    }
+    /// `native_bow_item` as a question.
     pub(super) fn native_is_bow(&self, item: &str) -> bool {
-        let _ = item;
-        false
+        let mut bow = false;
+        self.native_bow_item(item, &mut bow);
+        bow
     }
     /// A mod bow `bow` is let go with an arrow to shoot: set `allow` to false to keep the arrow (no energy, say), and
     /// `flame` to shoot it burning. Server-side, with the player swapped in. API 66.
