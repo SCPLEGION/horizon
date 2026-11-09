@@ -384,6 +384,11 @@
       "name": "shears_used",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_used"
+    },
+    {
+      "name": "may_fly",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_may_fly"
     }
   ]
 }

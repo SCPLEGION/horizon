@@ -232,6 +232,8 @@ API 50 adds a mod item's continuous use: `native_use_item` claims the click and 
 
 API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
 
+API 61 adds `native_may_fly(may_fly)`: set it to let the player fly as in creative mode (double jump toggles flying) while in survival; asked whenever the game sets the player's abilities, on both sides (Mekanism's Gravitational Modulating Unit).
+
 API 60 adds `native_fill_corners(batch, rect, [top_left, top_right, bottom_left, bottom_right])` (a rectangle shaded between four ARGB colours) and `native_gui_player(batch, clip, size, offset_y, armor)` (the player model in a GUI box, turned toward the cursor like the inventory's, wearing only `armor`, head to feet): Mekanism's colour picker window and its armour preview.
 
 API 59 adds `native_shears_used(stack)`: the item that acts as shears was used to shear (where shears would take wear: only a real shearing), so the mod charges it, as Mekanism's Meka-Tool does in energy; it takes no wear.
