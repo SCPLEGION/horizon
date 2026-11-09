@@ -396,6 +396,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_bow_shot"
     },
     {
+      "name": "attack_speed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_attack_speed"
+    },
+    {
       "name": "may_fly",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_may_fly"

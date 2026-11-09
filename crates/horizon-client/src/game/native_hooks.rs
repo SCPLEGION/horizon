@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 70 adds `native_attack_speed`: a mod's item adds to the attack speed of the player holding it (Mekanism's Atomic Disassembler and Meka-Tool, from their configs).
 //! API 69 adds `native_timed_effects` and `native_speed_up_effect`: the player's timed status effects by category, and counting one down a tick (Mekanism's MekaSuit Inhalation Purification Unit).
 //! API 68 adds `native_block_transform` and `native_apply_block_transform`: what a vanilla axe, hoe or shovel would do to a block, and doing it (Mekanism's Meka-Tool Farming Unit).
 //! API 67 adds `native_worldgen_entries`: a mod supplies worldgen files (placed features, configured features) over the generator's bundle when a world's levels open (Mekanism's ore and salt generation from its world config).
@@ -275,7 +276,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 69;
+pub(crate) const NATIVE_HOOKS_API: u32 = 70;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1404,6 +1405,11 @@ impl Game<'_> {
         attributes: &mut Vec<(String, String, f64, String)>,
     ) {
         let _ = attributes;
+    }
+    /// The attack speed the main-hand `stack` adds to the player's base (`Attributes.ATTACK_SPEED` `add_value` of the item's
+    /// modifier, -2.4 for a sword): set `add` for a mod's item. Asked on both sides. API 70.
+    pub(super) fn native_attack_speed(&self, stack: &ItemStack, add: &mut f64) {
+        let _ = (stack, add);
     }
     /// The frame's fog (`FogRenderer.setupFog`, and Neo's `ViewportEvent.RenderFog` and `ComputeFogColor`) after the game
     /// set it up, for a mod to change: `fog_type` is 0 for atmospheric fog, 1 water, 2 lava, 3 powder snow. Client-side,

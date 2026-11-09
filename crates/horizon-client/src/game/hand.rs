@@ -532,10 +532,16 @@ impl Game<'_> {
                     .map(|value| value.base_value())
             })
             .unwrap_or(horizon_client::attack_strength::BASE_ATTACK_SPEED);
-        let value = base
-            + self
-                .attack_item_info()
-                .map_or(0.0, |i| f64::from(i.attack_speed));
+        let mut item_speed = self
+            .attack_item_info()
+            .map_or(0.0, |i| f64::from(i.attack_speed));
+        if let Some(held) = self
+            .held()
+            .filter(|h| self.attack_item.as_deref() == Some(&*h.item))
+        {
+            self.native_attack_speed(held, &mut item_speed);
+        }
+        let value = base + item_speed;
         self.potions
             .effects
             .modifiers()
