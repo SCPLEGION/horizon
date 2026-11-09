@@ -1421,8 +1421,8 @@ impl Game<'_> {
     pub(super) fn native_bow_item(&self, item: &str, bow: &mut bool) {
         let _ = (item, bow);
     }
-    /// `native_bow_item` as a question.
-    pub(super) fn native_is_bow(&self, item: &str) -> bool {
+    /// `native_bow_item` as a question (a helper, not a hook point).
+    pub(super) fn mod_is_bow(&self, item: &str) -> bool {
         let mut bow = false;
         self.native_bow_item(item, &mut bow);
         bow

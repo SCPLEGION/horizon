@@ -6293,7 +6293,7 @@ impl Game<'_> {
             _ if bundle => true,
             // BowItem.use: with an arrow, or in creative.
             "minecraft:bow" => self.creative || self.projectile_slot("minecraft:bow").is_some(),
-            id if self.native_is_bow(id) => self.creative || self.projectile_slot("minecraft:bow").is_some(),
+            id if self.mod_is_bow(id) => self.creative || self.projectile_slot("minecraft:bow").is_some(),
             // CrossbowItem.use: charging when not charged and with ammunition;
             // a charged one shoots on the server.
             "minecraft:crossbow" => {
