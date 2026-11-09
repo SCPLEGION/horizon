@@ -405,7 +405,15 @@ impl Game<'_> {
                     if worn.emissive {
                         layer_overlay |= horizon_client::mobs::render::LAYER_FULL_BRIGHT;
                     }
-                    out.push((&worn.part, [r.u0, r.v0, r.u1, r.v1], 0xFFFF_FFFF, layer_overlay));
+                    // `MekaSuitArmor.getColor`: the opaque parts take the stack's tint, a mod's to say.
+                    let mut tint = None;
+                    if let Some(stack) = stack.filter(|_| !worn.emissive && !worn.translucent) {
+                        self.native_worn_tint(stack, &mut tint);
+                    }
+                    let color = tint.map_or(0xFFFF_FFFF, |c| {
+                        (c & 0xFF00_0000) | (c & 0xFF) << 16 | (c & 0xFF00) | (c >> 16) & 0xFF
+                    });
+                    out.push((&worn.part, [r.u0, r.v0, r.u1, r.v1], color, layer_overlay));
                 }
             }
             if let Some(r) = stack
