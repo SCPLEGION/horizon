@@ -379,6 +379,11 @@
       "name": "acts_as_shears",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_acts_as_shears"
+    },
+    {
+      "name": "shears_used",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_used"
     }
   ]
 }

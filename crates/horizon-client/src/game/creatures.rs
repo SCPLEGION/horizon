@@ -4324,7 +4324,7 @@ impl Game<'_> {
                     at: pos,
                     setup,
                 }])?;
-                self.damage_held_tool();
+                self.shear_wear();
             }
             Species::Sheep if item == "minecraft:shears" && !m.extra.sheared && !m.is_baby() => {
                 m.extra.sheared = true;
@@ -4337,7 +4337,7 @@ impl Game<'_> {
                 );
                 drops.extend(stacks.into_iter().map(|s| (s.item.to_string(), s.count)));
                 sound = Some("entity.sheep.shear");
-                self.damage_held_tool();
+                self.shear_wear();
             }
             Species::Sheep if item.ends_with("_dye") => {
                 let name = item
@@ -4371,7 +4371,7 @@ impl Game<'_> {
                 m.extra.head = None;
                 m.extra.body_damage = 0;
                 eat = Some(("item.armor.unequip_wolf", 1.0, 1.0));
-                self.damage_held_tool();
+                self.shear_wear();
             }
             // Wolf.mobInteract: heal, dye the collar or sit/stand when tame;
             // a bone tames a wild one a third of the time.
@@ -4822,7 +4822,7 @@ impl Game<'_> {
         }
         let ctx = self.who_context(Some(horizon_client::mobs::Who::Player), None);
         self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
-        self.damage_held_tool();
+        self.shear_wear();
         true
     }
     /// `Armadillo.mobInteract`: a brush brushes a scute off an adult

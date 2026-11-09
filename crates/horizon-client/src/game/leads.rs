@@ -188,7 +188,7 @@ impl Game<'_> {
             if dropped {
                 self.audio
                     .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
-                self.damage_held_tool();
+                self.shear_wear();
                 return true;
             }
         }
@@ -255,7 +255,7 @@ impl Game<'_> {
             }
             self.audio
                 .play("minecraft:item.shears.snip", Some(at), 1.0, 1.0);
-            self.damage_held_tool();
+            self.shear_wear();
             return true;
         }
         let in_hand = self.player_leashed(center);
