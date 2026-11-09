@@ -389,6 +389,11 @@
       "name": "may_fly",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_may_fly"
+    },
+    {
+      "name": "item_bars",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_item_bars"
     }
   ]
 }

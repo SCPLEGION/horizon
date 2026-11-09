@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 65 adds `native_item_bars`: a mod's item shows its own bars in a slot (Mekanism's energy, chemical and fluid bars).
 //! API 64 adds `native_online_players` (the players a server hosts) and `native_remote_players` (the other players a client sees, with where): a mod keeps what other players wear in sync and sounds from them (Mekanism's jetpack and scuba mask sounds).
 //! API 63 adds `native_drop_item`: a mod drops a stack as an item thrown out of a block face (Mekanism's Configurator emptying a machine).
 //! API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: a mod's game event, which sculk sensors and wardens hear (Mekanism's jetpack burn and gravity modulation).
@@ -270,7 +271,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 64;
+pub(crate) const NATIVE_HOOKS_API: u32 = 65;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1427,6 +1428,18 @@ impl Game<'_> {
     /// players only: creative and spectator fly anyway. API 61.
     pub(super) fn native_may_fly(&self, may_fly: &mut bool) {
         let _ = may_fly;
+    }
+    /// The bars a stack shows over its slot (`IItemDecorator`, `Item.isBarVisible`): set `bar` to the width (0 to 13) and RGB
+    /// colour of the main bar that replaces the damage bar (`None` keeps the game's), and push into `extra` more one-pixel
+    /// bars as (pixels from the slot's top, width 0 to 13, RGB colour), drawn like the main one. Client-side, for every
+    /// stack drawn in a slot. API 65.
+    pub(super) fn native_item_bars(
+        &self,
+        stack: &ItemStack,
+        bar: &mut Option<(i32, u32)>,
+        extra: &mut Vec<(i32, i32, u32)>,
+    ) {
+        let _ = (stack, bar, extra);
     }
     /// The tool's wear for a shearing: a mod's item that acts as shears pays another way (`native_shears_used`), any other
     /// item takes one point of damage.
