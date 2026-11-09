@@ -226,7 +226,9 @@ fn atlas_sprites(root: &Path, packed: &[PackedImage]) -> (Vec<PackedImage>, Vec<
         // The other atlases' renamed files (GUI sprites, particles...) are
         // looked up by their texture paths here.
         // The particle atlas too: a mod's world quads draw `generic_0` and the like (Mekanism's radiation motes).
-        let item_models = atlas == "minecraft:blocks" || atlas == "minecraft:items" || atlas == "minecraft:particles";
+        let item_models = atlas == "minecraft:blocks"
+            || atlas == "minecraft:items"
+            || atlas == "minecraft:particles";
         for (id, origin) in atlas_sources::list(&sources, &textures) {
             if !item_models && matches!(origin, SpriteOrigin::File(_)) {
                 continue;
@@ -1104,6 +1106,28 @@ impl HudBatch {
         let uv = [(r.u0 + r.u1) / 2.0, (r.v0 + r.v1) / 2.0];
         let p = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
         let c = [top, top, bottom, bottom];
+        for i in [0, 1, 2, 0, 2, 3] {
+            self.vertices.push(HudVertex {
+                pos: p[i],
+                uv,
+                color: c[i],
+                depth: 0.0,
+                glint_uv: [0.0, 0.0],
+            });
+        }
+    }
+    /// A rectangle shaded between four corner colours (`ColorGradientRenderState`): `colors` are the top left, top
+    /// right, bottom left and bottom right.
+    pub fn fill_corners(
+        &mut self,
+        atlas: &HudAtlas,
+        (x, y, w, h): (f32, f32, f32, f32),
+        colors: [u32; 4],
+    ) {
+        let r = atlas.white;
+        let uv = [(r.u0 + r.u1) / 2.0, (r.v0 + r.v1) / 2.0];
+        let p = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+        let c = [colors[0], colors[1], colors[3], colors[2]];
         for i in [0, 1, 2, 0, 2, 3] {
             self.vertices.push(HudVertex {
                 pos: p[i],

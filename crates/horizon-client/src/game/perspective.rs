@@ -665,6 +665,22 @@ impl Game<'_> {
         size: f32,
         offset_y: f32,
     ) {
+        self.draw_player_preview_with(batch, x0, y0, x1, y1, size, offset_y, None);
+    }
+    /// The same box, the player wearing `armor` (head to feet) and nothing else when given: a mod's
+    /// preview of one piece of gear.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn draw_player_preview_with(
+        &self,
+        batch: &mut HudBatch,
+        x0: f32,
+        y0: f32,
+        x1: f32,
+        y1: f32,
+        size: f32,
+        offset_y: f32,
+        armor: Option<&[Option<horizon_client::items::ItemStack>; 4]>,
+    ) {
         let Some(m) = self.player_model.as_ref() else {
             return;
         };
@@ -709,24 +725,31 @@ impl Game<'_> {
             &lookup,
             240 | 240 << 8,
             self.res.mob_data(),
-            &self.player_armor_layers(&m),
+            &match armor {
+                Some(armor) => self.stack_armor_layers(armor, [None, None]),
+                None => self.player_armor_layers(&m),
+            },
             &mut verts,
         );
         let chest = self.armor[1].as_ref().map(|s| &*s.item);
-        if !self.own_invisible() {
+        if armor.is_some() {
+            // A preview of gear shows the gear alone.
+        } else if !self.own_invisible() {
             self.player_cape_geometry(&m, chest, camera, 1.0, 240 | 240 << 8, &mut verts);
         }
-        self.player_ears_geometry(
-            &m,
-            &self.own_profile_name(),
-            camera,
-            1.0,
-            240 | 240 << 8,
-            &mut verts,
-        );
-        self.player_elytra_geometry(&m, chest, camera, 1.0, 240 | 240 << 8, &mut verts);
-        self.held_item_geometry(&m, camera, 1.0, 240 | 240 << 8, false, &mut verts);
-        self.head_item_geometry(&m, camera, 1.0, 240 | 240 << 8, false, &mut verts);
+        if armor.is_none() {
+            self.player_ears_geometry(
+                &m,
+                &self.own_profile_name(),
+                camera,
+                1.0,
+                240 | 240 << 8,
+                &mut verts,
+            );
+            self.player_elytra_geometry(&m, chest, camera, 1.0, 240 | 240 << 8, &mut verts);
+            self.held_item_geometry(&m, camera, 1.0, 240 | 240 << 8, false, &mut verts);
+            self.head_item_geometry(&m, camera, 1.0, 240 | 240 << 8, false, &mut verts);
+        }
         let height = if m.extra.crouching { 1.5 } else { 1.8 };
         // PictureInPictureRenderer: the box centre, (size, size, -size);
         // then the translation and Rz(pi) * Rx(y_angle * 20 degrees).
