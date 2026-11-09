@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 60 adds `native_fill_corners` (a rectangle shaded between four colours) and `native_gui_player` (the player model wearing given gear, in a GUI box): Mekanism's colour picker window.
 //! API 59 adds `native_shears_used`: the item that acts as shears was used to shear, for the mod to charge it (Mekanism's Meka-Tool spends energy).
 //! API 58 adds `native_acts_as_shears`: a mod's item that works as shears on mobs and blocks (Mekanism's Meka-Tool with a Shearing Unit).
 //! API 57 adds `native_worn_tint`: a mod tints the opaque worn models of a piece of gear (Mekanism's Color Modulation Unit).
@@ -174,7 +175,12 @@ use horizon_world::{
     nbt::Compound,
     registry::BlockStateId,
 };
-use std::{fs, path::PathBuf, sync::Arc, time::{Duration, Instant}};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use winit::{event::MouseButton, keyboard::KeyCode};
 
 /// An item a mod wants drawn in the world, in its GUI form (a bin's contents). API 47.
@@ -260,7 +266,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 59;
+pub(crate) const NATIVE_HOOKS_API: u32 = 60;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1374,13 +1380,20 @@ impl Game<'_> {
     /// `(type or #tag, share)` for the hits to come (a share of 1 takes the whole hit, and it is no hit at all). Unlike
     /// `native_player_damage` it applies to sources that bypass armor too. Server-side, for every player of the
     /// world. API 53.
-    pub(super) fn native_player_damage_rules(&mut self, absorbed: f32, rules: &mut Vec<(String, f32)>) {
+    pub(super) fn native_player_damage_rules(
+        &mut self,
+        absorbed: f32,
+        rules: &mut Vec<(String, f32)>,
+    ) {
         let _ = (absorbed, rules);
     }
     /// Attribute modifiers the player's worn gear gives beyond what its items list, asked every tick with the player
     /// swapped in: push `(attribute id, modifier id, amount, operation)` (`minecraft:water_movement_efficiency`,
     /// `add_value`). Applied like an enchantment's modifiers. Server-side, for every player of the world. API 54.
-    pub(super) fn native_gear_attributes(&mut self, attributes: &mut Vec<(String, String, f64, String)>) {
+    pub(super) fn native_gear_attributes(
+        &mut self,
+        attributes: &mut Vec<(String, String, f64, String)>,
+    ) {
         let _ = attributes;
     }
     /// The frame's fog (`FogRenderer.setupFog`, and Neo's `ViewportEvent.RenderFog` and `ComputeFogColor`) after the game
@@ -1831,6 +1844,38 @@ impl Game<'_> {
         let [x, y, w, h] = rect;
         let [a, r, g, b] = argb.to_be_bytes();
         batch.fill(&self.gui.atlas, x, y, w, h, rgba(r, g, b, a));
+    }
+    /// A rectangle in GUI pixels shaded between four corner colours, `argb`: top left,
+    /// top right, bottom left, bottom right (Mekanism's colour picker). API 60.
+    pub(super) fn native_fill_corners(&self, batch: &mut HudBatch, rect: [f32; 4], argb: [u32; 4]) {
+        let [x, y, w, h] = rect;
+        let c = argb.map(|v| {
+            let [a, r, g, b] = v.to_be_bytes();
+            rgba(r, g, b, a)
+        });
+        batch.fill_corners(&self.gui.atlas, (x, y, w, h), c);
+    }
+    /// The player model in the box `clip` (`[x0, y0, x1, y1]`, `size` pixels to the block, `offset_y`
+    /// blocks up), turned toward the cursor as the inventory's is, wearing only `armor` (head to
+    /// feet): a mod's preview of one piece of gear. API 60.
+    pub(super) fn native_gui_player(
+        &self,
+        batch: &mut HudBatch,
+        clip: [f32; 4],
+        size: f32,
+        offset_y: f32,
+        armor: &[Option<ItemStack>; 4],
+    ) {
+        self.draw_player_preview_with(
+            batch,
+            clip[0],
+            clip[1],
+            clip[2],
+            clip[3],
+            size,
+            offset_y,
+            Some(armor),
+        );
     }
     /// Any four-cornered shape in GUI pixels in one colour, `argb`, corners in
     /// order round it; `additive` adds the colour to what is behind it

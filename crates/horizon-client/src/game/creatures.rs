@@ -4113,7 +4113,10 @@ impl Game<'_> {
             return Ok(true);
         }
         {
-            let item = self.held().map(|h| self.acting_item_id(h)).unwrap_or_default();
+            let item = self
+                .held()
+                .map(|h| self.acting_item_id(h))
+                .unwrap_or_default();
             let used = self.held().cloned();
             if self.interact_leash(index, &item) {
                 if let Some(stack) = &used {

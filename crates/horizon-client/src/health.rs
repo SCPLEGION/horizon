@@ -333,10 +333,14 @@ impl PlayerMotion {
             .source::<()>(source, None, None, None)
             .ok_or("unknown resident damage source")?;
         // A mod's immunity cancels the hit whole (`LivingIncomingDamageEvent.setCanceled`).
-        if self.damage_immune.iter().any(|entry| match entry.strip_prefix('#') {
-            Some(tag) => source.in_tag(tag),
-            None => source.is_type(entry),
-        }) {
+        if self
+            .damage_immune
+            .iter()
+            .any(|entry| match entry.strip_prefix('#') {
+                Some(tag) => source.in_tag(tag),
+                None => source.is_type(entry),
+            })
+        {
             return Ok(BlockOutcome::default());
         }
         // A mod's armor takes its share of some damage types, armor-bypassing ones too (`native_player_damage_rules`).
