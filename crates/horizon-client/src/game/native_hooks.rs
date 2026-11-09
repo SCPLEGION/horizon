@@ -1401,7 +1401,7 @@ impl Game<'_> {
     }
     /// Attribute modifiers the player's worn gear gives beyond what its items list, asked every tick with the player
     /// swapped in: push `(attribute id, modifier id, amount, operation)` (`minecraft:water_movement_efficiency`,
-    /// `add_value`). Applied like an enchantment's modifiers. Server-side, for every player of the world. API 54.
+    /// `add_value`). Applied like an enchantment's modifiers; `neoforge:swim_speed` (base 1) scales the water thrust. Server-side, for every player of the world. API 54.
     pub(super) fn native_gear_attributes(
         &mut self,
         attributes: &mut Vec<(String, String, f64, String)>,

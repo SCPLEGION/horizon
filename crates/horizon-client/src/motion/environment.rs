@@ -203,6 +203,9 @@ impl LivingFluidWorld for MotionWorld<'_, '_, '_> {
     fn water_movement_efficiency(&mut self) -> Result<f64> {
         self.player.attribute("minecraft:water_movement_efficiency")
     }
+    fn swim_speed(&mut self) -> Result<f32> {
+        Ok(self.player.swim_speed as f32)
+    }
     fn dolphins_grace(&mut self) -> Result<bool> {
         Ok(self.player.status.dolphins_grace)
     }
