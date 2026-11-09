@@ -266,8 +266,11 @@ impl Game<'_> {
         {
             let view = item_render::stack_view(stack);
             // A mod's bow is drawn like `minecraft:bow` (72000 ticks of use), so its pulling models follow the draw.
+            let drink = self.mod_drink_ticks(&stack.item);
             let duration = if self.mod_is_bow(&stack.item) {
                 72_000
+            } else if drink > 0 {
+                drink
             } else {
                 use_duration(&self.pack.item_renderer.models.components(&view))
             };

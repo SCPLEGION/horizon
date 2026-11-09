@@ -11981,13 +11981,15 @@ impl Game<'_> {
                     let animation = components
                         .get("minecraft:consumable")
                         .map(horizon_client::first_person::consumable_animation);
-                    if matches!(
-                        animation,
-                        Some(
-                            horizon_world::consumable::UseAnimation::Eat
-                                | horizon_world::consumable::UseAnimation::Drink
+                    if self.mod_drink_ticks(&stack.item) > 0
+                        || matches!(
+                            animation,
+                            Some(
+                                horizon_world::consumable::UseAnimation::Eat
+                                    | horizon_world::consumable::UseAnimation::Drink
+                            )
                         )
-                    ) {
+                    {
                         ItemPose::Eat {
                             remaining: owner.use_item_remaining_ticks as f32,
                             duration: owner.use_duration as f32,

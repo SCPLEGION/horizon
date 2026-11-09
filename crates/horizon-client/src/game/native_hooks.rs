@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 72 adds `native_drink_item`: a mod's item that is drunk for some ticks (the first-person drinking pose and the use duration; Mekanism's Canteen).
 //! API 71 adds `native_shears_trim`: like `native_shears_used`, for a block sheared (a hive, a pumpkin; Mekanism's `shearTrim` energy).
 //! API 70 adds `native_attack_speed`: a mod's item adds to the attack speed of the player holding it (Mekanism's Atomic Disassembler and Meka-Tool, from their configs).
 //! API 69 adds `native_timed_effects` and `native_speed_up_effect`: the player's timed status effects by category, and counting one down a tick (Mekanism's MekaSuit Inhalation Purification Unit).
@@ -277,7 +278,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 71;
+pub(crate) const NATIVE_HOOKS_API: u32 = 72;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1428,6 +1429,18 @@ impl Game<'_> {
     /// from the draw time, the bow FOV zoom). Asked on both sides. API 66.
     pub(super) fn native_bow_item(&self, item: &str, bow: &mut bool) {
         let _ = (item, bow);
+    }
+    /// Set `ticks` to the use duration of the mod's item `item` when it is drunk like a potion (`consumable` with the drink
+    /// animation): the first-person pose and the use timing follow it. Left 0, the item is not drunk. The drinking itself
+    /// is the mod's (`native_start_using` / `native_using_tick`). Asked on the client. API 72.
+    pub(super) fn native_drink_item(&self, item: &str, ticks: &mut i32) {
+        let _ = (item, ticks);
+    }
+    /// `native_drink_item` as a question (a helper, not a hook point).
+    pub(super) fn mod_drink_ticks(&self, item: &str) -> i32 {
+        let mut ticks = 0;
+        self.native_drink_item(item, &mut ticks);
+        ticks
     }
     /// `native_bow_item` as a question (a helper, not a hook point).
     pub(super) fn mod_is_bow(&self, item: &str) -> bool {
