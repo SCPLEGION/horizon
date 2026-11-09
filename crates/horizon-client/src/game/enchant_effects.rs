@@ -65,10 +65,7 @@ impl Game<'_> {
         }
         let mut gear = Vec::new();
         self.native_gear_attributes(&mut gear);
-        mods.extend(
-            gear.into_iter()
-                .map(|(attr, _, amount, op)| (attr, amount, op)),
-        );
+        mods.extend(gear.into_iter().map(|(attr, _, amount, op)| (attr, amount, op)));
         let (mut add, mut base, mut total) = (0.0, 0.0, 1.0);
         for (attr, amount, op) in mods {
             if attr != "minecraft:submerged_mining_speed" {

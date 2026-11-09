@@ -1492,16 +1492,7 @@ fn render_visible(
         }
         let start = out.len();
         let bright = 240 | 240 << 8;
-        draw(
-            part,
-            base,
-            &poses,
-            *uv,
-            *color,
-            bright,
-            layer_overlay & !LAYER_FULL_BRIGHT,
-            out,
-        );
+        draw(part, base, &poses, *uv, *color, bright, layer_overlay & !LAYER_FULL_BRIGHT, out);
         for vertex in &mut out[start..] {
             vertex.normal = [0; 4];
         }
