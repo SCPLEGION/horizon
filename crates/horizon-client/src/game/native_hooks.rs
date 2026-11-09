@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 62 adds `native_drop_item`: a mod drops a stack as an item thrown out of a block face (Mekanism's Configurator emptying a machine).
 //! API 61 adds `native_may_fly`: a mod lets the player fly like in creative mode (Mekanism's MekaSuit Gravitational Modulating Unit).
 //! API 60 adds `native_fill_corners` (a rectangle shaded between four colours) and `native_gui_player` (the player model wearing given gear, in a GUI box): Mekanism's colour picker window.
 //! API 59 adds `native_shears_used`: the item that acts as shears was used to shear, for the mod to charge it (Mekanism's Meka-Tool spends energy).
@@ -267,7 +268,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 61;
+pub(crate) const NATIVE_HOOKS_API: u32 = 62;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2291,6 +2292,17 @@ impl Game<'_> {
             return 0.0;
         }
         (before - m.health.max(0.0)).max(0.0)
+    }
+    /// Drops a stack as an item in the world at `at`, thrown out of the block face `face` (a
+    /// direction as three ints): `Block.popResourceFromFace` (Mekanism's Configurator emptying a
+    /// machine). API 62.
+    pub(super) fn native_drop_item(&mut self, stack: ItemStack, at: [f64; 3], face: [i32; 3]) {
+        let motion = [
+            f64::from(face[0]) * 0.1,
+            f64::from(face[1]) * 0.1 + 0.1,
+            f64::from(face[2]) * 0.1,
+        ];
+        self.spawn_item(stack, at, motion, 10);
     }
     /// Takes the dropped item `id` out of the world, giving its stack. API 30.
     pub(super) fn native_take_item_entity(&mut self, id: u32) -> Option<ItemStack> {
