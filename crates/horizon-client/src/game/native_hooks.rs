@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 77;
+pub(crate) const NATIVE_HOOKS_API: u32 = 78;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2387,6 +2387,11 @@ impl Game<'_> {
         stack: ItemStack,
     ) -> Option<ItemStack> {
         self.insert_into_container((pos[0], pos[1], pos[2]), stack, face)
+    }
+    /// How many of `stack` `native_insert_item` would put into the container at `pos` through its side
+    /// `face`, changing nothing: a mod's item pipe choosing a destination before it sends the item. API 78.
+    pub(super) fn native_can_insert_item(&mut self, pos: [i32; 3], face: Direction, stack: &ItemStack) -> u32 {
+        self.simulate_insert_into_container((pos[0], pos[1], pos[2]), stack, face)
     }
     /// Takes up to `max` items of one stack out of the container at `pos`
     /// (a chest, a furnace's output, a mod container's outputs) through its
