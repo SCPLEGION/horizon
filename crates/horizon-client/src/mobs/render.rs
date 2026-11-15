@@ -1135,6 +1135,14 @@ fn red_overlay(m: &Mob) -> bool {
     m.hurt_time > 0 || (m.death_time > 0 && !super::creaking::tearing_down(m))
 }
 fn species_scale(m: &Mob, alpha: f32) -> glam::Mat4 {
+    let base = species_scale_base(m, alpha);
+    if m.extra.mod_scale > 0.0 && m.extra.mod_scale != 1.0 {
+        glam::Mat4::from_scale(glam::Vec3::splat(m.extra.mod_scale)) * base
+    } else {
+        base
+    }
+}
+fn species_scale_base(m: &Mob, alpha: f32) -> glam::Mat4 {
     if avatar(m) {
         // AvatarRenderer.scale, shared by the inventory and world renderer, on
         // top of the entity's own `scale` (`LivingEntityRenderer.submit`).
