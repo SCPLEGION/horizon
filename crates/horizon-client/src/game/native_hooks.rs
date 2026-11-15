@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 78;
+pub(crate) const NATIVE_HOOKS_API: u32 = 79;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2387,6 +2387,18 @@ impl Game<'_> {
         stack: ItemStack,
     ) -> Option<ItemStack> {
         self.insert_into_container((pos[0], pos[1], pos[2]), stack, face)
+    }
+    /// `Level.explode` on the server from a mod's own primed entity: `radius` blocks, destroying with the tnt
+    /// explosion rule's drop decay, setting fires when `fire`. API 79.
+    pub(super) fn native_explode(&mut self, center: [f64; 3], radius: f32, fire: bool) {
+        let interaction = self.destroy_type("tnt_explosion_drop_decay");
+        let _ = self.with_hive_emptying_blast(|g| g.server_explode(center, radius, interaction, fire));
+    }
+    /// Whether a redstone signal reaches the block at `pos` from a neighbour (`Level.hasNeighborSignal`), as TNT
+    /// reads it to light itself. API 79.
+    pub(super) fn native_has_neighbor_signal(&mut self, pos: [i32; 3]) -> bool {
+        let at = BlockPos::new(pos[0], pos[1], pos[2]);
+        self.with_level(|b, level, ticks| b.has_neighbor_signal(level, ticks, at))
     }
     /// How many of `stack` `native_insert_item` would put into the container at `pos` through its side
     /// `face`, changing nothing: a mod's item pipe choosing a destination before it sends the item. API 78.
