@@ -792,7 +792,12 @@ impl<'a> Plan<'a> {
                 // `"signal_source": true`: the SIGNAL_SOURCE flag (bit 3) of the block's rows. The new
                 // blocks' rows are the last ones, in plan order.
                 if let Some(J::Arr(rows)) = doc.at("states") {
-                    let mut at = rows.len() - self.blocks.iter().map(|b| b.rename.states.len()).sum::<usize>();
+                    let mut at = rows.len()
+                        - self
+                            .blocks
+                            .iter()
+                            .map(|b| b.rename.states.len())
+                            .sum::<usize>();
                     for b in &self.blocks {
                         for _ in 0..b.rename.states.len() {
                             if b.decl.properties.signal_source == Some(true)

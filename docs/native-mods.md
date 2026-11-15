@@ -240,6 +240,8 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
+API 79 adds `native_explode(center, radius, fire)` (an explosion as primed TNT makes it, with the `tnt_explosion_drop_decay` rule) and `native_has_neighbor_signal(pos)` (`Level.hasNeighborSignal`): Mekanism Additions' Obsidian TNT, a primed entity the mod keeps itself. Bundles that use them need `"hooks": 79`.
+
 API 78 adds `native_can_insert_item(pos, face, &stack) -> u32`: how many of `stack` `native_insert_item` would put into the container at `pos` through its side `face`, changing nothing (Mekanism's logistical transporters choose the container an item travels to before it leaves). Bundles that use it need `"hooks": 78`.
 
 API 72 adds `native_drink_item(item, ticks)` (set the use duration of a mod's item drunk like a potion; client): the first-person drinking pose of Mekanism's Canteen.
