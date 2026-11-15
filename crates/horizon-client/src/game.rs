@@ -16287,7 +16287,9 @@ fn load_resources(
     };
     let (facts, gameplay_projection) =
         facts.map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
-    let biomes = Arc::new(biomes.map_err(|e| -> Box<dyn std::error::Error> { e.into() })?);
+    let mut biomes = biomes.map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
+    Game::native_biome_spawns(&mut biomes);
+    let biomes = Arc::new(biomes);
     let environment = environment.map_err(|e| -> Box<dyn std::error::Error> { e.into() })?;
     log::info!("load facts: {:.2}s", started.elapsed().as_secs_f32());
     progress.set(2);
