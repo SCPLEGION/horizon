@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 82;
+pub(crate) const NATIVE_HOOKS_API: u32 = 83;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2463,6 +2463,16 @@ impl Game<'_> {
         }
         self.particles.add(&ParticleOptions::dust(rgb, scale), at, vel);
         true
+    }
+    /// The world's own folder (the one that holds `level.dat`), where a server mod keeps what belongs to the
+    /// world and not to the player's settings: Mekanism Additions' balloons. `None` when this level has no
+    /// saved folder above it. API 83.
+    pub(super) fn native_world_dir(&self) -> Option<PathBuf> {
+        self.save
+            .root
+            .ancestors()
+            .find(|dir| dir.join("level.dat").is_file())
+            .map(PathBuf::from)
     }
     /// The ids of the living mobs of type `kind` in the level in place. API 46.
     pub(super) fn native_mob_ids(&self, kind: &str) -> Vec<u32> {
