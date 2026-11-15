@@ -240,6 +240,8 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
+API 81 adds `native_add_particle(name, at, vel)`: one client-side particle of a type that needs no block, item or colour (Mekanism Additions' lava sparks on a primed Obsidian TNT). Bundles that use it need `"hooks": 81`.
+
 API 80 adds `Extra::mod_scale` on a mob (`native_with_mob`): the factor the game draws the mob at, 0 for none (Mekanism Additions' baby mobs, half size). Bundles that use it need `"hooks": 80`.
 
 API 79 adds `native_explode(center, radius, fire)` (an explosion as primed TNT makes it, with the `tnt_explosion_drop_decay` rule) and `native_has_neighbor_signal(pos)` (`Level.hasNeighborSignal`): Mekanism Additions' Obsidian TNT, a primed entity the mod keeps itself. Bundles that use them need `"hooks": 79`.
