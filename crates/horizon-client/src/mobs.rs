@@ -774,6 +774,8 @@ pub struct Extra {
     /// (`LivingEntityRenderState.scale`): the local player's own, and on a
     /// server the others' from their attribute updates; 0 is the default, 1.
     pub model_scale: f32,
+    /// A native mod's own scale for how this mob is drawn (Mekanism Additions' baby mobs, drawn at half size); 0 is none. API 80.
+    pub mod_scale: f32,
     /// Players: crouching and riding (HumanoidModel's poses).
     pub crouching: bool,
     /// A player's or mannequin's synced pose (`Entity.DATA_POSE`), which
