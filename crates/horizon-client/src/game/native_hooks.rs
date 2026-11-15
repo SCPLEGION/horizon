@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 80;
+pub(crate) const NATIVE_HOOKS_API: u32 = 81;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2427,6 +2427,33 @@ impl Game<'_> {
         wanted: &dyn Fn(&ItemStack) -> bool,
     ) -> Option<ItemStack> {
         self.extract_from_container_where((pos[0], pos[1], pos[2]), face, max, wanted)
+    }
+    /// Adds one client-side particle of the type `name` (`minecraft:lava`, a type that needs no block, item or
+    /// colour) at `at` with velocity `vel`; false when the name is not a particle type or the type needs more. API 81.
+    pub(super) fn native_add_particle(&mut self, name: &str, at: [f64; 3], vel: [f64; 3]) -> bool {
+        let Some(ty) = ParticleType::from_name(name) else {
+            return false;
+        };
+        if matches!(
+            ty,
+            ParticleType::Block
+                | ParticleType::BlockMarker
+                | ParticleType::FallingDust
+                | ParticleType::DustPillar
+                | ParticleType::BlockCrumble
+                | ParticleType::Item
+                | ParticleType::Trail
+                | ParticleType::Vibration
+                | ParticleType::Geyser
+                | ParticleType::GeyserPlume
+                | ParticleType::GeyserBase
+                | ParticleType::GeyserPoof
+        ) || !at.into_iter().chain(vel).all(f64::is_finite)
+        {
+            return false;
+        }
+        self.particles.add(&ParticleOptions::simple(ty), at, vel);
+        true
     }
     /// The ids of the living mobs of type `kind` in the level in place. API 46.
     pub(super) fn native_mob_ids(&self, kind: &str) -> Vec<u32> {
