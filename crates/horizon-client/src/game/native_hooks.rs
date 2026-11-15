@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 81;
+pub(crate) const NATIVE_HOOKS_API: u32 = 82;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2453,6 +2453,15 @@ impl Game<'_> {
             return false;
         }
         self.particles.add(&ParticleOptions::simple(ty), at, vel);
+        true
+    }
+    /// Adds one client-side `minecraft:dust` particle of `rgb` (each 0 to 1) and `scale` at `at` moving at `vel`
+    /// (`DustParticleOptions`: Mekanism's balloon pop). False when a value is not finite. API 82.
+    pub(super) fn native_add_dust(&mut self, rgb: [f32; 3], scale: f32, at: [f64; 3], vel: [f64; 3]) -> bool {
+        if !at.into_iter().chain(vel).all(f64::is_finite) || !rgb.into_iter().chain([scale]).all(f32::is_finite) {
+            return false;
+        }
+        self.particles.add(&ParticleOptions::dust(rgb, scale), at, vel);
         true
     }
     /// The ids of the living mobs of type `kind` in the level in place. API 46.
