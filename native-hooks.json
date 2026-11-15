@@ -444,6 +444,11 @@
       "name": "biome_spawns",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_biome_spawns"
+    },
+    {
+      "name": "screen_drop",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_drop"
     }
   ]
 }

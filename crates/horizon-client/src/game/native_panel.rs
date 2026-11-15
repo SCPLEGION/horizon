@@ -67,6 +67,8 @@ pub(super) struct Panel {
     sent: String,
     /// The recipes shown instead of the items.
     pub(super) recipes: Option<super::native_panel_recipes::Pages>,
+    /// The item the player pressed on and has not released yet (`native_screen_drop`).
+    pub(super) drag: Option<ItemStack>,
 }
 
 impl Panel {
@@ -424,7 +426,8 @@ impl Game<'_> {
                 .play("minecraft:ui.button.click", None, 0.25, 1.0);
             return true;
         }
-        if let Some((index, _)) = self.browser_hovered(&layout) {
+        if let Some((index, stack)) = self.browser_hovered(&layout) {
+            self.panel.drag = (!right).then_some(stack);
             let event = BrowserEvent::Clicked {
                 index: index as u32,
                 right,
@@ -433,6 +436,22 @@ impl Game<'_> {
             return true;
         }
         inside(cursor, layout.area)
+    }
+
+    /// A mouse release after a press on a panel item: the stack dropped on the open mod screen
+    /// (`native_screen_drop`). True when there was a drag to end.
+    pub(super) fn native_panel_drop(&mut self) -> bool {
+        let Some(stack) = self.panel.drag.take() else {
+            return false;
+        };
+        if let Some((block, data, at)) = self.native_screen_at() {
+            let mut taken = false;
+            self.native_screen_drop(&block, &data, at, &stack, &mut taken);
+            if taken {
+                self.audio.play_button_click();
+            }
+        }
+        true
     }
 
     /// Whether keys go to the panel's search box.
