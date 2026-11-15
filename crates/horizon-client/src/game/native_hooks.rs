@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 85;
+pub(crate) const NATIVE_HOOKS_API: u32 = 86;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1252,6 +1252,19 @@ impl Game<'_> {
         button: &mut Option<i32>,
     ) {
         let _ = (block, data, at, right, button);
+    }
+    /// An item of the item panel (`native_panel_items`) was pressed and released at `at` (as in
+    /// `native_screen_click`) on block `block`'s screen, a mod's: a ghost slot takes `stack` (a recipe viewer's item
+    /// dragged onto a filter). Set `taken` to play the click. Client-side; send the choice to the server with a payload. API 86.
+    pub(super) fn native_screen_drop(
+        &self,
+        block: &str,
+        data: &[i32],
+        at: [f32; 2],
+        stack: &ItemStack,
+        taken: &mut bool,
+    ) {
+        let _ = (block, data, at, stack, taken);
     }
     /// The tooltip at `at` (as in `native_screen_click`) on block `block`'s
     /// screen, a mod's, over no item: push its lines when it is over
@@ -3165,7 +3178,7 @@ impl Game<'_> {
     }
     /// The cursor from the open mod screen's top left, with its block and
     /// data, for its press and tooltip hooks.
-    fn native_screen_at(&self) -> Option<(String, Vec<i32>, [f32; 2])> {
+    pub(in crate::game) fn native_screen_at(&self) -> Option<(String, Vec<i32>, [f32; 2])> {
         let s = self.shown_native_screen()?;
         let r = self.renderer.as_ref()?;
         let batch = HudBatch::new([r.config.width, r.config.height]);

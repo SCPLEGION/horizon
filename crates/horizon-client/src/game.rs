@@ -8738,6 +8738,9 @@ impl Game<'_> {
     fn inventory_mouse_release(&mut self, right: bool) {
         use horizon_client::container_screen::{Release, Target};
         self.tweak_release();
+        if self.native_panel_drop() {
+            return;
+        }
         let (slot, outside) = self.inventory_target();
         let dragged = self.inv_drag.as_ref().is_some_and(|(_, s)| !s.is_empty());
         let release = self.inv_clicks.release(
