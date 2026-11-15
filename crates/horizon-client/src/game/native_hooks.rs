@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 83;
+pub(crate) const NATIVE_HOOKS_API: u32 = 84;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1145,6 +1145,11 @@ impl Game<'_> {
         types: &mut std::collections::HashMap<String, horizon_client::mobs::MobType>,
     ) {
         let _ = types;
+    }
+    /// The biomes are loaded: a mod adds spawn entries (`biomes.list[..].spawns`, by category) for its own
+    /// mob types, as a biome modifier does. API 84.
+    pub(super) fn native_biome_spawns(biomes: &mut horizon_client::biome::Biomes) {
+        let _ = biomes;
     }
     /// Every tick on a level (client and server alike), after its mobs ticked: a mod steers the mobs of
     /// its own types (`native_mob_ids`, `native_with_mob`). API 46.
