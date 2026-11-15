@@ -11756,7 +11756,9 @@ impl Game<'_> {
             a.fired_from_weapon = weapon;
         }
         // Flame: the arrow is spawned burning (EnchantmentHelper.onProjectileSpawned).
-        if let Some(seconds) = self.bow_projectile_ignite().or(flame.then_some(5.0))
+        if let Some(seconds) = self
+            .bow_projectile_ignite()
+            .or(flame.then_some(5.0))
             && let Some(a) = arrow.arrow.as_mut()
         {
             a.ignite_for_seconds(seconds);

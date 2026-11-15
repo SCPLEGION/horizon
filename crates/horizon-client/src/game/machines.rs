@@ -617,12 +617,7 @@ impl Game<'_> {
     }
     /// How many of `stack` `insert_into_container` would put into the block container at `pos` through
     /// its side `face`, without changing anything: a mod's item pipe choosing where to send an item.
-    pub(super) fn simulate_insert_into_container(
-        &mut self,
-        pos: Pos,
-        stack: &ItemStack,
-        face: Direction,
-    ) -> u32 {
+    pub(super) fn simulate_insert_into_container(&mut self, pos: Pos, stack: &ItemStack, face: Direction) -> u32 {
         let Some(view) = self.containers().view(pos, false) else {
             return 0;
         };
@@ -646,9 +641,7 @@ impl Game<'_> {
             }
             match c.get(&view, slot) {
                 None => left = 0,
-                Some(current)
-                    if current.count <= max && current.same_item_same_components(stack) =>
-                {
+                Some(current) if current.count <= max && current.same_item_same_components(stack) => {
                     left -= left.min(max.saturating_sub(current.count));
                 }
                 Some(_) => {}
