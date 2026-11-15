@@ -429,6 +429,16 @@
       "name": "worldgen_entries",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_worldgen_entries"
+    },
+    {
+      "name": "dispense",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_dispense"
+    },
+    {
+      "name": "projectile_moved",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_projectile_moved"
     }
   ]
 }
