@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 82;
+pub(crate) const NATIVE_HOOKS_API: u32 = 83;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1157,6 +1157,29 @@ impl Game<'_> {
         data: Option<&horizon_world::nbt::Compound>,
     ) {
         let _ = (kind, at, data);
+    }
+    /// A dispenser at `pos` facing `facing` (a direction as three ints) is about to dispense `stack`:
+    /// set `handled` when the mod dispensed it, leaving in `stack` what stays in the slot (count 0
+    /// for nothing). The server's, before the game's own dispense methods. API 83.
+    pub(super) fn native_dispense(
+        &mut self,
+        pos: [i32; 3],
+        facing: [i32; 3],
+        stack: &mut ItemStack,
+        handled: &mut bool,
+    ) {
+        let _ = (pos, facing, stack, handled);
+    }
+    /// A projectile of `kind` (`arrow`, `snowball`...) flew from `from` to `to` this tick on a server
+    /// (it did not stick): set `absorbed` to take it out of the world, as a hit does. API 83.
+    pub(super) fn native_projectile_moved(
+        &mut self,
+        kind: &str,
+        from: [f64; 3],
+        to: [f64; 3],
+        absorbed: &mut bool,
+    ) {
+        let _ = (kind, from, to, absorbed);
     }
     /// The player right clicked mob `id` on a window that is a client (a server's player, or the single
     /// player's window): set `claimed` to take the click. The mob is the base type to this client;

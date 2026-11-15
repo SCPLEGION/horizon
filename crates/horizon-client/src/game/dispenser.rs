@@ -584,6 +584,19 @@ impl Game<'_> {
         facing: Direction,
         stack: ItemStack,
     ) -> Result<Option<ItemStack>> {
+        let mut stack = stack;
+        let mut handled = false;
+        self.native_dispense(
+            [pos.0, pos.1, pos.2],
+            step(facing),
+            &mut stack,
+            &mut handled,
+        );
+        if handled {
+            self.dispenser_event(CLICK, pos, 0);
+            self.dispenser_event(2000, pos, data_value(facing));
+            return Ok(Some(stack).filter(|s| s.count > 0));
+        }
         let item = stack.item.to_string();
         let (left, event) = match item.as_str() {
             "minecraft:arrow"

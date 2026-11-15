@@ -3020,6 +3020,19 @@ impl Game<'_> {
                 k
             });
         }
+        projectiles.retain(|p| {
+            if p.stuck {
+                return true;
+            }
+            let mut absorbed = false;
+            self.native_projectile_moved(
+                p.kind.id(),
+                [p.previous.x, p.previous.y, p.previous.z],
+                [p.position.x, p.position.y, p.position.z],
+                &mut absorbed,
+            );
+            !absorbed
+        });
         self.smoke_trails(trails);
         for at in deflections {
             self.audio

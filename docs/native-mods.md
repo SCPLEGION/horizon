@@ -240,6 +240,8 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
+API 83 adds `native_dispense(pos, facing, stack, handled)` (a dispenser dispensing an item: the mod's own behaviour, before the game's) and `native_projectile_moved(kind, from, to, absorbed)` (a server projectile's flight each tick, which the mod can end): Mekanism Additions' balloons (dispenser behaviour, arrows pop them). Bundles that use them need `"hooks": 83`.
+
 API 82 adds `native_add_dust(rgb, scale, at, vel)`: one client-side dust particle of a colour (Mekanism Additions' balloon pop). Bundles that use it need `"hooks": 82`.
 
 API 81 adds `native_add_particle(name, at, vel)`: one client-side particle of a type that needs no block, item or colour (Mekanism Additions' lava sparks on a primed Obsidian TNT). Bundles that use it need `"hooks": 81`.
