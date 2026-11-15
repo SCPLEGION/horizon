@@ -276,6 +276,11 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_slot_rules"
     },
     {
+      "name": "slot_rules_at",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_slot_rules_at"
+    },
+    {
       "name": "screen_wheel",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_wheel"

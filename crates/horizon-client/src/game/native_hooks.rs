@@ -6,6 +6,7 @@
 //! Horizon's own HUD extras do, and keep a mod's settings where the
 //! WebAssembly mod of the same id kept them.
 //!
+//! API 77 adds `native_slot_rules_at`: `native_slot_rules` with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine).
 //! API 76 adds `native_set_block_adjusted`: like `native_set_block`, with the state first adjusted to its neighbours as `Block.updateFromNeighbourShapes` does (a chest that was half of a double one becomes single when alone); refused where that leaves air (Mekanism's Cardboard Box unboxing).
 //! API 75 adds `native_block_properties`, `native_take_block_entity` and `native_put_block_entity`: a block's whole state and its block entity as NBT, taken out without drops and put back (Mekanism's Cardboard Box).
 //! API 74 adds `native_game_rule`: the value of a game rule by name (Mekanism's Electric Pump asks whether water and lava sources convert).
@@ -282,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 76;
+pub(crate) const NATIVE_HOOKS_API: u32 = 77;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -788,6 +789,16 @@ impl Game<'_> {
     ) {
         let _ = (block, rules);
     }
+    /// `native_slot_rules` for the menu of the block at `pos`: the same rules, asked after it, with the
+    /// block's position so they can depend on that block. API 77.
+    pub(super) fn native_slot_rules_at(
+        &self,
+        pos: [i32; 3],
+        block: &str,
+        rules: &mut Vec<horizon_client::lan::menu::SlotRule>,
+    ) {
+        let _ = (pos, block, rules);
+    }
     /// The rules of the mod menu at `pos`, from the mod's screen.
     pub(super) fn mod_menu_rules(&self, pos: Pos) -> Vec<horizon_client::lan::menu::SlotRule> {
         if self.mod_menu_at(pos).is_none() {
@@ -801,6 +812,7 @@ impl Game<'_> {
             .to_string();
         let mut rules = Vec::new();
         self.native_slot_rules(&block, &mut rules);
+        self.native_slot_rules_at([pos.0, pos.1, pos.2], &block, &mut rules);
         rules
     }
     /// Escape was pressed on block `block`'s screen: set `consumed` when the mod
