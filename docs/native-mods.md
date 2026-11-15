@@ -107,6 +107,179 @@ output), so `execute in <dimension> run tp <player> <x> <y> <z>` moves a player 
 tells a player why, even inside their own hook; and the players
 `native_server_players` lists carry their health. Bundles that use them need `"hooks": 21`.
 
+API 22 adds mod networking: a server mod sends a packet on its own channel (`mymod:sync`, never `minecraft:` or
+`horizon:`) to a player's client with `native_send_to_player(uuid, channel, data)` (up to 1 MiB), and that client's
+`native_client_payload(channel, data)` hears it; a client sends one to the server with `native_send_to_server(channel,
+data)` (up to 32,767 bytes), heard by `native_server_payload(player, channel, data)`. They travel as vanilla's custom
+payload packets, so a client without the mod ignores them. The window's own client in single player gets them too. A
+server mod never trusts what a client sends. Bundles that use them need `"hooks": 22`.
+
+API 23 adds block-entity client sync. A mod block entity's client view is the `client` compound in its NBT: what a
+machine shows in the world, never its whole state. The server sends it to each player with the chunk, again after the
+block changes, and when the mod calls `native_sync_block_entity(pos)` after changing it (in the tick too; it goes out
+at the end of the tick). A client reads it with `native_client_block_entity(pos)`, which gives the id and the view, and
+hears each one in `native_client_block_entity_changed(pos, id, client)`. On a LAN host's own game the helper reads the
+block entity itself. Keep the view small and change it only when what players see changes.
+
+API 24 adds `native_extract_item(pos, face, max)`, the other half of `native_insert_item`: it takes up to `max` items of
+one stack out of the container at `pos` through its side `face`, from the slots and under the rules a hopper there
+would use (a furnace gives its output and empty buckets, a mod container its outputs). Item pipes use the pair.
+Bundles that use it need `"hooks": 24`.
+
+API 25 adds `native_destroy_speed(stack, block, hardness, speed)`: the speed the held stack mines a block at, where
+`Item.getDestroySpeed` gives it, before enchantments and effects change it. A mod's tool sets `speed` (a powered drill
+mines fast while it holds energy and slowly once empty). It runs on the client, which draws the crack, and on the
+server, which times the break, so both must answer the same. Bundles that use it need `"hooks": 25`.
+
+API 26 runs `native_server_payload` as the player who sent the packet: their state is swapped in, as for
+`native_right_click_block`, so the hook can read and change what they wear and carry, and `native_acting_player` names
+them (a jetpack's fuel goes down while its wearer's client says it thrusts). Bundles that rely on it need `"hooks": 26`.
+
+API 27 adds `native_player_attack(target, strength, amount)`: a player's melee hit on a mob, with the damage
+`Player.attack` worked out (attack damage, attack strength `strength` from 0 to 1, enchantments) before the mob takes
+it. A mod's weapon changes `amount` (a powered sword adds damage and spends its energy). The hitting player's state is
+swapped in. Server-side. Bundles that use it need `"hooks": 27`.
+
+API 28 adds `native_player_damage(absorbed, share)`: a mod's armor takes the share `share` (0 to 1) of each hit on a
+player before their own armor sees it, except damage tagged `minecraft:bypasses_armor`. `absorbed` is the damage it
+took since the last call, for the mod to pay for (a powered suit spends energy on it); the mod sets `share` for the hits
+to come. Called right after an absorbed hit and every 10 ticks otherwise, the player's state swapped in. Server-side.
+Bundles that use it need `"hooks": 28`.
+
+API 29 adds `native_extract_item_where(pos, face, max, wanted)`: `native_extract_item`, but it skips the stacks
+`wanted` turns down and takes from the first one it accepts (a sorter that moves only its filters' items). Bundles
+that use it need `"hooks": 29`.
+
+API 30 adds entity access for blocks that act on what stands in front of them. `native_entities_in(min, max, from)` lists
+the living mobs and dropped items whose boxes overlap a box, nearest to `from` first (players are not listed).
+`native_hurt_mob(id, amount, fire_ticks)` hurts a mob with generic damage, sets it on fire, and returns the health it
+lost. `native_take_item_entity(id)` picks a dropped item up. A mod's laser and tractor beam use them. Server-side.
+Bundles that use them need `"hooks": 30`.
+
+API 31 adds `native_sprite_tinted(batch, name, src, dst, argb)`: `native_sprite` multiplied by a colour, for a
+mod's GUI tabs in their type's colour and gauges in their chemical's. Bundles that use it need `"hooks": 31`.
+
+API 32 adds windows over a mod screen. `native_screen_overlay` draws after the screen's items, labels and the player's
+inventory, for a window that covers slots (a side configuration or upgrade window). `native_screen_covers` says
+which points that window covers: there the slots under it take no presses, do not light up and show no tooltips,
+and a press goes to `native_screen_click` and stops there. API 32 also adds two drawing helpers:
+`native_item_stack(batch, stack, at, size)`, which draws a stack's icon using its components (a
+`custom_model_data` that picks the model), and `native_text_scaled(batch, text, at, rgb, scale)`. Client-side.
+Bundles that use them need `"hooks": 32`.
+
+API 33 adds text boxes on a mod screen (a frequency name, a filter's tag). While `native_screen_typing` says one of
+the mod's boxes has focus, every key press but Escape goes to `native_screen_key(block, data, key, text, ctrl,
+shift)` instead of the game, as vanilla's anvil rename box takes them: `key` is the key's name, `text` what it types
+(the clipboard's text for the paste shortcut). The mod keeps the box's value itself, sends it with
+`native_send_to_server`, and copies with the new `native_set_clipboard(text)` helper. Client-side. Bundles that use
+them need `"hooks": 33`.
+
+API 34 adds creative tabs for mods. `native_creative_tabs(tabs)` is asked each time the creative inventory opens: push
+a `NativeCreativeTab` (`id`, `title`, an `icon` item, `items`) per module. Vanilla's ten ordinary tabs fill the first
+page, a mod's follow, ten to a page, and `<` `>` buttons above the screen turn pages (as NeoForge's do; they show only
+when a mod added tabs). The title is a language key or plain text; the stacks also join the search tab. Client-side.
+Bundles that use it need `"hooks": 34`.
+
+API 35 adds `native_mouse_down()`: whether the left mouse button is down. `native_screen_click` sees only the press, so a mod
+that lets the player drag a window of its own (as Mekanism's GUI windows move) follows `native_cursor()` while it holds.
+Bundles that use it need `"hooks": 35`.
+
+API 36 adds a second layout for a mod screen. `NativeScreen::alt` holds another `NativeScreen` (another size, slots and
+inventory position), and `native_screen_alt(block, alt)`, asked every frame, says whether it shows now: Mekanism's
+frequency selector is a screen of its own size that its machines' screens swap to. Bundles that use it need
+`"hooks": 36`.
+
+API 37 adds `native_screen_escape(block, consumed)`: Escape on a mod screen first asks the mod, which sets `consumed` when it
+closed a window of its own (Mekanism's machine windows); the screen then stays open. Bundles that use it need
+`"hooks": 37`.
+
+API 38 adds `native_slot_rules(block, rules)`, on the server: one `SlotRule` per container slot of a mod screen's menu
+(`Any`, `Refuse` for an output slot, `Items(ids)` for a slot that takes only those items, such as an energy slot).
+Bundles that use it need `"hooks": 38`.
+
+API 39 adds `native_fill_quad(batch, corners, argb, additive)`: a four-cornered shape in one colour, added to what is behind it when `additive` (Mekanism's lightning in the
+Antiprotonic Nucleosynthesizer's screen). Bundles that use it need `"hooks": 39`.
+
+API 40 adds `native_screen_wheel(block, at, steps, taken)`: the mouse wheel over a mod screen goes to the mod first, which
+sets `taken` when it scrolled a list of its own (Mekanism's filter lists). Bundles that use it need `"hooks": 40`.
+
+API 41 adds `native_world_boxes(boxes)`: a mod pushes `NativeWorldBox { min, max, colors }` (world corners and an ARGB colour per face)
+and the game draws each as a translucent box, full bright and seen from both sides, like translucent item quads
+(Mekanism's Digital Miner visuals). Bundles that use it need `"hooks": 41`.
+
+API 44 adds mod screens tied to no block: `native_open_ui(id)` (from a client hook such as `native_key`) opens the mod's screen `id` over the game and frees the cursor; the mod draws the whole window in `native_ui_draw(id, batch)` and hears `native_ui_click(id, at, button, pressed)`, `native_ui_key(id, key, text, pressed)` (every key but Escape, both edges), `native_ui_wheel(id, steps)` and `native_ui_closed(id)`. `native_close_ui()` closes it; Escape does too. Mekanism's module tweaker and radial selector use it.
+API 45 adds `native_keep_chunks(chunks)`: a mod keeps chunks of the level in place loaded and ticking, like `/forceload`, for 40 ticks after each call (call it every tick from the block entity that loads them; they are let go when it stops), and they are not written to `forced_chunks.dat`. A chunk `/forceload` already holds stays the command's. Mekanism's dimensional stabilizer and anchor upgrade use it.
+API 46 adds the hook `native_mob_types(types)`: a mod adds its own mob types when they load, as a clone of a vanilla `MobType` under another id (size, health, speed changed), and declares `horizon_client::mobs::register_mod_mob_base(id, base)`; guests and the window's client are sent `base`, so the mod's own client code draws the difference. `/summon` and saved entities find the type by its id. Also `native_mobs_tick()` (every tick after the mobs ticked), `native_mob_died(kind, at, data)`, `native_use_mob(id, claimed)` (a client's right click on a mob), `native_mob_ids(kind)`, `native_with_mob(id, f)` and `Extra::mod_data`, a compound saved with the mob as `mod_data`. Mekanism's Robit is built on them.
+
+API 43 adds `native_block_redirect(pos, state, to)`: before a right click or a break, a mod sets `to` and the click or break acts on that
+position instead (Mekanism's bounding blocks send a click on a filler cell to the machine that owns it). API 43 also adds `native_set_block(pos, block, properties)`: sets a block (`Level.setBlock` with `UPDATE_ALL`; `minecraft:air` removes), which a multi-cell
+machine uses to fill and clear its other cells. API 43 also adds `native_block_removed(pos, old, old_properties, new)`: after any change of a block into another (a player, an explosion, a piston,
+a command), with the block it was; unlike `native_block_changed` it runs once the change is done, so the mod may set blocks (a machine clearing
+its other cells). API 43 also gives `NativeWorldBox` a `sprite` (a GUI-atlas sprite such as `block/water_still`, one tile per block, tinted by the face colours: a tank's fluid).
+API 43 also adds `native_world_models(models)`: a mod pushes `NativeWorldModel { model, position, yaw, pitch, roll, light_at, color, rotation, full_bright, scale }` for a part tree
+in `assets/<ns>/horizon/world_models/<name>.json` (pixels, y up) textured from `textures/entity/equipment/horizon_models/<name>.png`, and the game
+draws it each frame (a wind generator's spinning rotor). Bundles that use any of these need `"hooks": 43`.
+
+API 47 adds `native_world_items(items)` (`NativeWorldItem { item, matrix, light_at, seed, ground }`: an item in its GUI or ground form under a world-space matrix, a bin's
+contents or a liquifier's food), `native_world_texts(texts)` (`NativeWorldText { text, matrix, x, y, color, light_at }`: a line of text in font pixels, y down, like a sign's) and
+`native_face_sturdy(pos, face)` (`canOcclude` and a full sturdy face). Matrices are column major, in world space. Bundles that use them need `"hooks": 47`.
+
+API 55 adds `SlotRule::Check(fn(&ItemStack) -> bool)` to the rules `native_slot_rules` returns: the slot takes only the stacks the function accepts, so a rule can test an item's components (Mekanism's hohlraum slot takes only a full hohlraum).
+
+API 49 adds `native_gui_model(batch, model, texture, clip, origin, size, yaw)`: a mod's world model (`native_world_models`) drawn in a GUI as a picture-in-picture, its feet at `origin`, `size` pixels to the block, turned `yaw` degrees about its vertical axis, lit like an entity in a UI, wearing another atlas sprite as its skin (Mekanism's Robit skin preview). Call it from `native_ui_draw` or a block screen's draw.
+
+API 50 adds a mod item's continuous use: `native_use_item` claims the click and calls `native_start_using`, then `native_using_tick(stack, ticks, claimed, keep)` runs each tick the use key is held (set `claimed`, and `keep` to go on). `native_clip(from, to)` finds the first block on a segment and `native_eye()` is the player's eyes (Mekanism's Flamethrower).
+
+API 51 adds looping sounds: `native_loop_sound(key, event, at, volume, pitch)` starts (or keeps alive) a loop of a sound event, at a world position or heard everywhere with `at: None`; call it every tick or frame it should sound, and it stops 250 ms after the last call. `native_stop_loop_sound(key)` stops it at once (Mekanism's Industrial Alarm and Flamethrower).
+
+API 62 adds `horizon_client::sculk::register_mod_event(id, radius, frequency)`: registers a mod's game event (`radius` its notification radius, `frequency` its vibration frequency, 0 for none), so sculk sensors, shriekers and wardens hear it when the game posts it; call it once at start (Mekanism's jetpack burn, gravity modulation and seismic vibration).
+API 73 adds `native_set_block_signal(pos, level)` (a mod block declared `"signal_source": true` powers its neighbours with a level 0 to 15 of its own, set again each tick, not saved; neighbours are told when it changes) and the declaration property `signal_source`: Mekanism's Laser Amplifier redstone output.
+API 74 adds `native_game_rule(name)` (the value of a game rule, a boolean as 0 or 1; `None` for no such rule): Mekanism's Electric Pump asks whether water and lava sources convert.
+API 75 adds `native_block_properties(pos)`, `native_take_block_entity(pos)` and `native_put_block_entity(pos, nbt)`: a block's whole state, and its block entity taken out as saved (nothing drops) and loaded back: Mekanism's Cardboard Box.
+API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_block` with the state first adjusted to its neighbours (`Block.updateFromNeighbourShapes`), refused where that leaves air: Mekanism's Cardboard Box unboxing.
+
+API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
+
+API 72 adds `native_drink_item(item, ticks)` (set the use duration of a mod's item drunk like a potion; client): the first-person drinking pose of Mekanism's Canteen.
+
+API 71 adds `native_shears_trim(stack)` (like `native_shears_used`, for a block sheared: a hive, a pumpkin): Mekanism's `shearTrim`.
+
+API 70 adds `native_attack_speed(stack, add)` (the main-hand item's attack speed modifier; set `add` for a mod's item; both sides): Mekanism's Atomic Disassembler and Meka-Tool.
+API 69 adds `native_timed_effects()` (the acting player's timed status effects as index and category: 0 beneficial, 1 neutral, 2 harmful) and `native_speed_up_effect(index)` (counts one down a tick without its periodic effect): Mekanism's Inhalation Purification Unit.
+API 68 adds `native_block_transform(transformer, pos, face)` (what the transformer `minecraft:axe`, `minecraft:hoe` or `minecraft:shovel` would turn the block into, and the durability a use costs) and `native_apply_block_transform(transformer, pos, face)` (does it, with sound, particles and loot but no wear): Mekanism's Meka-Tool Farming Unit.
+API 67 adds `native_worldgen_entries(world_root, entries)`: worldgen files (bundle, id, JSON) a mod supplies when a level opens, over the generator's bundle and under the world's data packs (Mekanism's ore and salt generation from its world config). It has no `self`.
+API 66 adds `native_bow_item(item, bow)` (set `bow` when a mod's item is drawn and let go like `minecraft:bow`: arrows from the inventory, power from the draw time, the bow's FOV zoom; asked on both sides) and `native_bow_shot(bow, flame, allow)` (server side, once an arrow is there to shoot: set `allow` false to keep it, `flame` to shoot it burning): Mekanism's Electric Bow spends energy per shot and burns in fire mode.
+API 65 adds `native_item_bars(stack, bar, extra)`: the bars a stack shows over its slot, the main one (width 0 to 13, RGB) replacing the damage bar and `extra` more one-pixel bars at a given height (Mekanism's energy, chemical and fluid bars).
+API 64 adds `native_online_players()` (the UUIDs of the players a server hosts) and `native_remote_players()` (the other players a client sees: UUID and feet position), for a mod that keeps what players wear in sync (Mekanism's jetpack and scuba mask sounds from other players).
+API 63 adds `native_drop_item(stack, at, face)`: drops a stack as an item entity at `at`, thrown out of the block face `face` (Mekanism's Configurator in Empty mode).
+
+API 61 adds `native_may_fly(may_fly)`: set it to let the player fly as in creative mode (double jump toggles flying) while in survival; asked whenever the game sets the player's abilities, on both sides (Mekanism's Gravitational Modulating Unit).
+
+API 60 adds `native_fill_corners(batch, rect, [top_left, top_right, bottom_left, bottom_right])` (a rectangle shaded between four ARGB colours) and `native_gui_player(batch, clip, size, offset_y, armor)` (the player model in a GUI box, turned toward the cursor like the inventory's, wearing only `armor`, head to feet): Mekanism's colour picker window and its armour preview.
+
+API 59 adds `native_shears_used(stack)`: the item that acts as shears was used to shear (where shears would take wear: only a real shearing), so the mod charges it, as Mekanism's Meka-Tool does in energy; it takes no wear.
+
+API 58 adds `native_acts_as_shears(stack, shears)`: set `shears` when the stack in hand works as shears; the game then treats it as `minecraft:shears` when it shears mobs, hives, pumpkins and leads (Mekanism's Meka-Tool with a Shearing Unit).
+
+API 57 adds `native_worn_tint(stack, tint)`: the colour (`0xAARRGGBB`) the opaque mod models worn on a piece of gear are drawn in (the glowing and translucent ones keep theirs), asked per worn stack every frame on the client (Mekanism's Color Modulation Unit).
+
+API 56 adds `native_fog(fog_type, fog)`: the frame's fog after the game set it up (`fog_type` 0 atmospheric, 1 water, 2 lava, 3 powder snow), for the mod to change its colour and distances, every frame on the client (Mekanism's Vision Enhancement Unit).
+
+API 54 adds `native_gear_attributes(attributes)` (push `(attribute id, modifier id, amount, operation)` for the worn gear, applied like an enchantment's modifiers), `native_glider(glider)` (set it to let the worn gear glide as an elytra) and `native_glide_wear(wear, claimed)` (the chest gear's wear while gliding, which `claimed` pays another way): Mekanism's MekaSuit Hydrostatic Repulsor, Gyroscopic Stabilization and Elytra units.
+
+API 53 adds `native_player_damage_rules(absorbed, rules)`: pushed `(damage type id or #tag, share)` pairs are the share of such hits a mod's armor takes (1 is all of it), also for damage that bypasses armor; `absorbed` is the damage they took since the last call, for the mod to pay for (Mekanism's Inhalation Purification Unit).
+
+API 52 adds `native_player_immunities(immune)`: pushed damage type ids (`minecraft:magic`) or `#`-tags are damage the player takes none of, asked every tick with the player swapped in (Mekanism's Gas Mask).
+
+
+API 48 adds `native_mob_hidden(id, kind, hidden)` (the game leaves a mob undrawn because the mod draws it) and `native_mob_pose(id)` (its interpolated position, body yaw, head yaw and pitch); Mekanism's Robit is drawn so, as a part tree under `native_world_models`. API 48 also gives `NativeWorldModel` a `parts` list (the x, y and z rotations of parts by name) and lets a world model's JSON be `{"vanilla": "minecraft:chest#main", "offset": [x, y, z]}`: the part tree of a vanilla entity model under the mod's texture (Mekanism's Personal Chest lid).
+
+API 47 also adds `native_world_quads(quads)` (`NativeWorldQuad { corners, color, sprite, uv }`: a flat full bright quad in world space, drawn from both sides, tinted, with a GUI-atlas sprite or the plain
+colour: lightning bolts, billboarding effects) and `native_camera_axes()` (the camera's right and up directions, for a billboard). Bundles that use them need `"hooks": 47`.
+
+API 42 adds `NativeScreen { armor, offhand }`: where the screen shows the player's four armor slots (head first, 18 px apart down) and the off hand slot
+(`addArmorSlots`). They are the player's own worn slots; clicks go to the inventory menu (window 0) of a Horizon server. Bundles that use it need `"hooks": 42`.
+
 ## What the launcher does
 
 In the window: install a native mod from the Mods page. The first one shows a notice once (the first build downloads

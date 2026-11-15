@@ -14,7 +14,7 @@ impl Game<'_> {
         face: [i32; 3],
         held: Option<&ItemStack>,
     ) -> Result<bool> {
-        let Some(shears) = held.filter(|s| &*s.item == "minecraft:shears") else {
+        let Some(shears) = held.filter(|s| self.acting_item_id(s) == "minecraft:shears") else {
             return Ok(false);
         };
         let state = self.world.block(pos[0], pos[1], pos[2]);
@@ -78,7 +78,7 @@ impl Game<'_> {
         if let Some(carved) = carved {
             self.set_golem_head(pos, carved)?;
         }
-        self.damage_held(1);
+        self.shear_wear_of(true);
         self.post_block_game_event("minecraft:shear", pos, self.sculk_actor(), None);
         self.stats.add("used", "minecraft:shears", 1);
         // ServerPlayerGameMode.useItemOn: the action was consumed.

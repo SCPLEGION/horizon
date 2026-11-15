@@ -73,7 +73,17 @@ pub struct BlockProperties {
     pub map_color: Option<u8>,
     /// A vanilla block whose sounds this block uses.
     pub sounds: Option<String>,
+    /// `false`: the block hides nothing behind it and lets light through
+    /// (`noOcclusion`), whatever its template does. A pipe on a full-cube
+    /// template with smaller `shapes` needs it.
+    pub occludes: Option<bool>,
+    /// `true`: the block can power its neighbours (`isSignalSource`), whatever its template does; a native mod
+    /// sets the level per position with `native_set_block_signal`. API 73.
+    pub signal_source: Option<bool>,
 }
+
+/// Most boxes in one block shape (a combined machine model has up to a few dozen).
+pub const MAX_SHAPE_BOXES: usize = 64;
 
 /// Per-state outline and collision boxes, selected by one state property.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -90,6 +100,8 @@ struct BlockFile {
     #[serde(default)]
     properties: BlockProperties,
     shapes: Option<BlockShapes>,
+    /// One outline and collision shape for every state, in place of `shapes`.
+    shape: Option<Vec<[f64; 6]>>,
     #[serde(default)]
     default_state: BTreeMap<String, String>,
     #[serde(default = "yes")]
@@ -340,6 +352,16 @@ impl Content {
             let file: BlockFile =
                 serde_json::from_slice(&self.file(&name)?).map_err(|e| format!("{name}: {e}"))?;
             check_block(&file).map_err(|e| format!("{name}: {e}"))?;
+            let shapes = match (file.shapes, file.shape) {
+                (shapes, None) => shapes,
+                (None, Some(boxes)) => Some(BlockShapes {
+                    property: String::new(),
+                    values: BTreeMap::from([(String::new(), boxes)]),
+                }),
+                (Some(_), Some(_)) => {
+                    return Err(format!("{name}: shapes and shape are exclusive"));
+                }
+            };
             if file.item {
                 ids.insert(block.clone());
             }
@@ -347,7 +369,7 @@ impl Content {
                 id: block,
                 template: file.template,
                 properties: file.properties,
-                shapes: file.shapes,
+                shapes,
                 default_state: file.default_state,
                 item: file.item,
             });
@@ -413,14 +435,21 @@ fn check_block(file: &BlockFile) -> Result<(), String> {
         if shapes.property.is_empty() || shapes.values.is_empty() {
             return Err("shapes needs a property and values".into());
         }
-        for boxes in shapes.values.values() {
-            if boxes.len() > 16
-                || boxes
-                    .iter()
-                    .any(|b| b.iter().any(|n| !n.is_finite()) || (0..3).any(|i| b[i] > b[i + 3]))
-            {
-                return Err("shape needs at most 16 finite boxes with ordered bounds".into());
-            }
+    }
+    for boxes in file
+        .shapes
+        .iter()
+        .flat_map(|s| s.values.values())
+        .chain(file.shape.iter())
+    {
+        if boxes.len() > MAX_SHAPE_BOXES
+            || boxes
+                .iter()
+                .any(|b| b.iter().any(|n| !n.is_finite()) || (0..3).any(|i| b[i] > b[i + 3]))
+        {
+            return Err(format!(
+                "shape needs at most {MAX_SHAPE_BOXES} finite boxes with ordered bounds"
+            ));
         }
     }
     let p = &file.properties;
@@ -492,7 +521,8 @@ side = "both"
 capabilities = ["registries"]
 "#;
     const BLOCK: &[u8] = br#"{"template": "minecraft:iron_block",
-        "properties": {"hardness": 4.0, "light": 3, "sounds": "minecraft:amethyst_block"}}"#;
+        "properties": {"hardness": 4.0, "light": 3, "sounds": "minecraft:amethyst_block",
+                       "occludes": false}}"#;
     const ITEM: &[u8] = br#"{"template": "minecraft:diamond", "rarity": "uncommon"}"#;
 
     fn scratch(name: &str) -> PathBuf {
@@ -535,6 +565,7 @@ capabilities = ["registries"]
                     hardness: Some(4.0),
                     light: Some(3),
                     sounds: Some("minecraft:amethyst_block".into()),
+                    occludes: Some(false),
                     ..BlockProperties::default()
                 },
                 item: true,
@@ -625,6 +656,8 @@ capabilities = ["registries"]
         );
         refused("shape-reversed", &[("data/ruby/horizon/block/a.json", br#"{"template":"minecraft:stone","shapes":{"property":"axis","values":{"x":[[1,0,0,0,1,1]]}}}"#)]);
         refused("shape-malformed", &[("data/ruby/horizon/block/a.json", br#"{"template":"minecraft:stone","shapes":{"property":"axis","values":{"x":[[0,0,0,1,1]]}}}"#)]);
+        refused("shape-both", &[("data/ruby/horizon/block/a.json", br#"{"template":"minecraft:stone","shape":[[0,0,0,1,1,1]],"shapes":{"property":"axis","values":{"x":[[0,0,0,1,1,1]]}}}"#)]);
+        refused("shape-uniform-reversed", &[("data/ruby/horizon/block/a.json", br#"{"template":"minecraft:stone","shape":[[1,0,0,0,1,1]]}"#)]);
         refused(
             "shape-no-values",
             &[(

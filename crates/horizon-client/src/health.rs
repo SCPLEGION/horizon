@@ -332,11 +332,50 @@ impl PlayerMotion {
             .damage
             .source::<()>(source, None, None, None)
             .ok_or("unknown resident damage source")?;
+        // A mod's immunity cancels the hit whole (`LivingIncomingDamageEvent.setCanceled`).
+        if self
+            .damage_immune
+            .iter()
+            .any(|entry| match entry.strip_prefix('#') {
+                Some(tag) => source.in_tag(tag),
+                None => source.is_type(entry),
+            })
+        {
+            return Ok(BlockOutcome::default());
+        }
+        // A mod's armor takes its share of some damage types, armor-bypassing ones too (`native_player_damage_rules`).
+        let mut amount = amount;
+        let rule_share: f32 = self
+            .damage_rules
+            .iter()
+            .filter(|(entry, _)| match entry.strip_prefix('#') {
+                Some(tag) => source.in_tag(tag),
+                None => source.is_type(entry),
+            })
+            .map(|(_, share)| *share)
+            .sum::<f32>()
+            .clamp(0.0, 1.0);
+        if rule_share > 0.0 {
+            let taken = amount * rule_share;
+            self.damage_rules_taken += taken;
+            amount -= taken;
+            if amount <= 0.0 {
+                return Ok(BlockOutcome::default());
+            }
+        }
         let armor = self.attribute("minecraft:armor").unwrap_or(0.0) as f32;
         let toughness = self.attribute("minecraft:armor_toughness").unwrap_or(0.0) as f32;
         let before = self.health.health() + self.health.absorption();
         let fire_ticks = self.fire_ticks;
         let source_name = source.definition().name.clone();
+        // A mod's armor takes its share first (`native_player_damage`).
+        let share = if source.in_tag("minecraft:bypasses_armor") {
+            0.0
+        } else {
+            self.damage_absorption.clamp(0.0, 1.0)
+        };
+        let absorbed = amount * share;
+        let dealt = amount - absorbed;
         let totem_ready = self.health.totem_ready;
         let invulnerable = self.invulnerable;
         let h = &mut self.health;
@@ -364,7 +403,7 @@ impl PlayerMotion {
             h.ids,
             &mut environment,
         )?
-        .hurt(&mut h.hurt, amount)?;
+        .hurt(&mut h.hurt, dealt)?;
         let outcome = BlockOutcome {
             hurt,
             blocked: environment.blocked,
@@ -377,6 +416,7 @@ impl PlayerMotion {
         }
         if outcome.hurt {
             h.hurt_animation_time = h.hurt.hurt_time;
+            self.damage_absorbed += absorbed;
         }
         // `dealDefaultKnockback` ends in `indicateDamage` unless blocked: a
         // hit with no direction of its own (`xd` and `zd` zero) is sent as

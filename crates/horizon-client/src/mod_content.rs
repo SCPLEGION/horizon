@@ -421,21 +421,27 @@ impl<'a> Plan<'a> {
                         let J::Arr(row) = &rows[id as usize] else {
                             unreachable!()
                         };
-                        let Some(J::Str(value)) = row
-                            .get(4)
-                            .and_then(|x| x.get("properties"))
-                            .and_then(|x| x.get(&spec.property))
-                        else {
-                            return Err(format!(
-                                "{}: template state lacks property {}",
-                                decl.id, spec.property
-                            )
-                            .into());
+                        let boxes = if spec.property.is_empty() {
+                            // One shape for every state (`shape`).
+                            &spec.values[""]
+                        } else {
+                            let Some(J::Str(value)) = row
+                                .get(4)
+                                .and_then(|x| x.get("properties"))
+                                .and_then(|x| x.get(&spec.property))
+                            else {
+                                return Err(format!(
+                                    "{}: template state lacks property {}",
+                                    decl.id, spec.property
+                                )
+                                .into());
+                            };
+                            let boxes = spec.values.get(value).ok_or_else(|| {
+                                format!("{}: no shape for {}={value}", decl.id, spec.property)
+                            })?;
+                            used.insert(value.as_str());
+                            boxes
                         };
-                        let boxes = spec.values.get(value).ok_or_else(|| {
-                            format!("{}: no shape for {}={value}", decl.id, spec.property)
-                        })?;
-                        used.insert(value.as_str());
                         let mut shape = VoxelShape::empty();
                         for b in boxes {
                             let part = VoxelShape::from_box(Aabb::new(
@@ -446,7 +452,7 @@ impl<'a> Plan<'a> {
                         }
                         out.push(shape);
                     }
-                    if used.len() != spec.values.len() {
+                    if !spec.property.is_empty() && used.len() != spec.values.len() {
                         return Err(format!(
                             "{}: shape values include an unknown {} value",
                             decl.id, spec.property
@@ -656,10 +662,15 @@ impl<'a> Plan<'a> {
                             .collect();
                         row.set("outline", J::Arr(boxes));
                         row.set("outline_edges", J::Arr(shape_edges(shape)));
-                        row.set(
-                            "full_collision",
-                            J::Bool(!shape.join_is_not_empty(&VoxelShape::block(), ShapeOp::XOR)?),
-                        );
+                        let full = !shape.join_is_not_empty(&VoxelShape::block(), ShapeOp::XOR)?;
+                        row.set("full_collision", J::Bool(full));
+                        if !full && b.decl.properties.occludes.is_none() {
+                            // BlockBehaviour: a shape that is not a full cube is not a solid render, so it
+                            // lets sky light down and dampens none; its faces cull by the shape itself.
+                            row.set("solid_render", J::Bool(false));
+                            row.set("skylight_down", J::Bool(true));
+                            row.set("dampening", J::Num(0.into()));
+                        }
                     }
                 }
                 list.push(row);
@@ -692,6 +703,14 @@ impl<'a> Plan<'a> {
         }
         if let Some(s) = &p.sounds {
             row.set("sound", self.sounds[s].clone());
+        }
+        if p.occludes == Some(false) {
+            // BlockBehaviour.Properties.noOcclusion: neighbours' faces show, light and sky light pass.
+            row.set("solid_render", J::Bool(false));
+            row.set("can_occlude", J::Bool(false));
+            row.set("shape_occlusion", J::Bool(false));
+            row.set("skylight_down", J::Bool(true));
+            row.set("dampening", J::Num(0.into()));
         }
     }
 
@@ -770,6 +789,22 @@ impl<'a> Plan<'a> {
             "gameplay-facts.json" => states(doc, "states", false, true)?,
             "block-behaviours.json" => {
                 states(doc, "states", false, false)?;
+                // `"signal_source": true`: the SIGNAL_SOURCE flag (bit 3) of the block's rows. The new
+                // blocks' rows are the last ones, in plan order.
+                if let Some(J::Arr(rows)) = doc.at("states") {
+                    let mut at = rows.len() - self.blocks.iter().map(|b| b.rename.states.len()).sum::<usize>();
+                    for b in &self.blocks {
+                        for _ in 0..b.rename.states.len() {
+                            if b.decl.properties.signal_source == Some(true)
+                                && let J::Arr(row) = &mut rows[at]
+                                && let Some(J::Num(flags)) = row.get_mut(1)
+                            {
+                                *flags = (flags.as_u64().unwrap_or(0) | 8).into();
+                            }
+                            at += 1;
+                        }
+                    }
+                }
                 let Some(J::Arr(blocks)) = doc.at("blocks") else {
                     return Err("no blocks".into());
                 };
@@ -891,6 +926,50 @@ impl<'a> Plan<'a> {
         Ok(())
     }
 
+    /// `occlusion.nbt`: a block declared `"occludes": false` has an empty
+    /// occlusion shape in every state, so it culls no neighbour face; a block
+    /// with its own `shapes` that does not say so occludes by that shape
+    /// (`BlockBehaviour.getOcclusionShape` is the shape unless overridden).
+    fn occlusion_shapes(&self, tag: &mut Tag) -> Result<()> {
+        let blocks: Vec<&NewBlock> = self
+            .blocks
+            .iter()
+            .filter(|b| b.decl.properties.occludes == Some(false) || b.shapes.is_some())
+            .collect();
+        if blocks.is_empty() {
+            return Ok(());
+        }
+        let Tag::Compound(root) = tag else {
+            return Err("occlusion table is not a compound".into());
+        };
+        let Some(Tag::List(entries)) = root.get_mut(&JavaString::from("shapes")) else {
+            return Err("occlusion table has no shapes".into());
+        };
+        let empty = entries.len() as i32;
+        entries.push(encode_shape(&VoxelShape::empty()));
+        let mut states = Vec::new();
+        for b in blocks {
+            let first = b.rename.first as usize;
+            for i in 0..b.rename.states.len() {
+                let id = match (&b.shapes, b.decl.properties.occludes) {
+                    (_, Some(false)) | (None, _) => empty,
+                    (Some(shapes), _) => {
+                        entries.push(encode_shape(&shapes[i]));
+                        entries.len() as i32 - 1
+                    }
+                };
+                states.push((first + i, id));
+            }
+        }
+        let Some(Tag::IntArray(mapping)) = root.get_mut(&JavaString::from("cached_shapes")) else {
+            return Err("occlusion table has no mapping".into());
+        };
+        for (state, id) in states {
+            mapping[state] = id;
+        }
+        Ok(())
+    }
+
     /// One NBT table: `states` lists, `cached_shapes` arrays and `blocks`
     /// compounds, wherever they are.
     fn nbt(&self, tag: &mut Tag) {
@@ -977,15 +1056,20 @@ pub const MAX_STATES: u32 = 1 << 20;
 const TAG_BUNDLES: [&str; 2] = ["block-tags.json", "worldgen/block_tags.json"];
 /// The worldgen loader's bundle of biome tags.
 const BIOME_TAGS: &str = "worldgen/biome_tags.json";
+/// The worldgen loader's bundle of biomes (id → the biome file's text).
+const BIOMES: &str = "worldgen/biomes.json";
 /// Worldgen registries a content mod may add to, and the bundle the
 /// worldgen loader reads each from (id → the file's text): what structure
 /// mods hold. Biomes, noise and density functions change the terrain and
 /// are not read from mods.
-const WORLDGEN_BUNDLES: [(&str, &str); 6] = [
+/// Configured features are `worldgen/feature/` in 26.3's data packs, and
+/// `worldgen/configured_feature/` in packs made before the rename.
+const WORLDGEN_BUNDLES: [(&str, &str); 7] = [
     ("structure", "worldgen/structures.json"),
     ("structure_set", "worldgen/structure_sets.json"),
     ("template_pool", "worldgen/template_pools.json"),
     ("processor_list", "worldgen/processor_lists.json"),
+    ("feature", "worldgen/features.json"),
     ("configured_feature", "worldgen/features.json"),
     ("placed_feature", "worldgen/placed_features.json"),
 ];
@@ -1358,6 +1442,9 @@ fn tables(base: &Path, plan: &Plan, overlay: &Overlay<'_>) -> Result<()> {
             if name == "cached-collision.nbt" || name == "worldgen/blocks/cached-collision.nbt" {
                 plan.collision_shapes(&mut named.tag)?;
             }
+            if name == "occlusion.nbt" {
+                plan.occlusion_shapes(&mut named.tag)?;
+            }
             nbt::write_named(&named, Limits::tables()).map_err(|e| format!("{name}: {e}"))?
         };
         overlay.write(name, &bytes)
@@ -1411,6 +1498,7 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
     let mut warnings = Vec::new();
     let mut worldgen: BTreeMap<&str, Vec<(String, String)>> = BTreeMap::new();
     let mut additions: BTreeMap<&str, Vec<Addition>> = BTreeMap::new();
+    let mut biome_modifiers: Vec<(String, String)> = Vec::new();
     for m in mods {
         let declarations = format!("data/{}/horizon/", m.id);
         let mut reader = m.content.reader()?;
@@ -1429,7 +1517,10 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
                 warnings.extend(merge.add(&m.id, file, replace, shared, values));
             } else if !file.starts_with(&declarations) {
                 overlay.write(file, &bytes)?;
-                if let Some((bundle, id)) = worldgen_entry(file) {
+                if biome_modifiers::is_modifier(file) {
+                    let text = String::from_utf8(bytes).map_err(|e| format!("{file}: {e}"))?;
+                    biome_modifiers.push((format!("{}: {file}", m.id), text));
+                } else if let Some((bundle, id)) = worldgen_entry(file) {
                     let text = String::from_utf8(bytes).map_err(|e| format!("{file}: {e}"))?;
                     let entries = worldgen.entry(bundle).or_default();
                     match Addition::read(bundle, &text).map_err(|e| format!("{file}: {e}"))? {
@@ -1500,6 +1591,7 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
             Some((format!("{ns}:{}", path.strip_suffix(".json")?), merge))
         })
         .collect();
+    let mut biome_tag_doc = None;
     if !biome_tags.is_empty() && base.join(BIOME_TAGS).exists() {
         let mut doc = read_json(&base.join(BIOME_TAGS))?;
         for (id, merge) in biome_tags {
@@ -1511,6 +1603,18 @@ pub fn build(base: &Path, mods: &[ContentMod], out: &Path) -> Result<Vec<String>
             doc.set(&id, J::Str(merged));
         }
         overlay.write(BIOME_TAGS, &serde_json::to_vec(&doc)?)?;
+        biome_tag_doc = Some(doc);
+    }
+    // NeoForge biome modifiers: features added to biomes, by the merged tags.
+    if !biome_modifiers.is_empty() && base.join(BIOMES).exists() {
+        let tags = match biome_tag_doc {
+            Some(doc) => doc,
+            None if base.join(BIOME_TAGS).exists() => read_json(&base.join(BIOME_TAGS))?,
+            None => J::Obj(Vec::new()),
+        };
+        let mut doc = read_json(&base.join(BIOMES))?;
+        warnings.extend(biome_modifiers::apply(&mut doc, &tags, &biome_modifiers)?);
+        overlay.write(BIOMES, &serde_json::to_vec(&doc)?)?;
     }
     // Structures and the pools, sets, processors and features they use, then
     // what mods add to sets and pools, in mod and file order.
@@ -1661,6 +1765,8 @@ fn stamp(base: &Path, mods: &[ContentMod]) -> Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+#[path = "mod_content_biome_modifiers.rs"]
+mod biome_modifiers;
 #[cfg(test)]
 #[path = "mod_content_tests.rs"]
 mod tests;

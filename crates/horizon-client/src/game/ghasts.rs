@@ -65,7 +65,7 @@ impl Game<'_> {
             self.audio
                 .play("minecraft:entity.happy_ghast.unequip", Some(at), 1.0, 1.0);
             self.spawn_item(ItemStack::new(&harness, 1), at, [0.0, 0.2, 0.0], 10);
-            self.damage_held_tool();
+            self.shear_wear();
             return true;
         }
         if harnessed && !sneaking {

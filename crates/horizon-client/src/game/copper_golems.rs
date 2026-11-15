@@ -314,7 +314,7 @@ impl Game<'_> {
                 let p = self.mobs[index].position;
                 self.spawn_at_location(p, 1.5, a);
             }
-            self.damage_held_tool();
+            self.shear_wear();
             return true;
         }
         let block = {

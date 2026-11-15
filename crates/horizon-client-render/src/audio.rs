@@ -890,6 +890,40 @@ impl Audio {
         let instance = SoundInstance::for_jukebox_song(&event, at, SoundEngine::unseeded());
         self.play_instance(instance, true).0
     }
+    /// A looping sound a caller keeps and stops itself (a mod's machine hum): at a world position, or relative
+    /// to the listener without attenuation (`None`). The handle stays until `stop_and_release`.
+    pub fn play_loop(
+        &mut self,
+        event: &str,
+        at: Option<[f64; 3]>,
+        volume: f32,
+        pitch: f32,
+    ) -> InstanceId {
+        let seed = self.random.next_long();
+        self.sync_volumes();
+        let event = crate::sound_events::normalize(event);
+        let source = self
+            .source_override
+            .unwrap_or_else(|| crate::settings::sound_source(&event));
+        let random = LegacyRandom::new(seed);
+        let (attenuation, position, relative) = match at {
+            Some(at) => (Attenuation::Linear, at, false),
+            None => (Attenuation::None, [0.0; 3], true),
+        };
+        let instance = SoundInstance::new(
+            &event,
+            source,
+            volume,
+            pitch,
+            random,
+            true,
+            0,
+            attenuation,
+            position,
+            relative,
+        );
+        self.play_instance(instance, true).0
+    }
     /// Stop and drop a held instance.
     pub fn stop_and_release(&mut self, id: InstanceId) {
         self.stop_instance(id);

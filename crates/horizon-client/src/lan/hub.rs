@@ -1304,6 +1304,7 @@ impl Hub {
             {
                 let _ = ctx.world.block_log.take();
                 let _ = ctx.world.light_log.take();
+                ctx.world.mod_block_entity_log.clear();
             }
             return events;
         }
@@ -1521,8 +1522,18 @@ impl Hub {
                 })
             })
             .collect();
+        // The client views of the mod block entities in these columns follow
+        // the batch that holds them.
+        let sent: crate::fast_hash::FxHashSet<(i32, i32)> =
+            columns.iter().map(|c| (c.x, c.z)).collect();
+        let mod_views = super::chunks::mod_block_entity_packets(&world.block_entities, &sent);
         for (i, taken, batch) in batches {
             let g = &mut self.guests[i];
+            let in_batch: crate::fast_hash::FxHashSet<(i32, i32)> = if mod_views.is_empty() {
+                Default::default()
+            } else {
+                taken.iter().map(|&idx| g.chunk_queue[idx]).collect()
+            };
             let size = batch.len();
             g.batch_quota -= size as f32;
             g.send(&C::ChunkBatchStart(horizon_protocol::packets::Empty));
@@ -1538,6 +1549,11 @@ impl Hub {
                 size: size as i32,
             }));
             g.unacknowledged += 1;
+            for (column, packet) in &mod_views {
+                if in_batch.contains(column) {
+                    g.send(packet);
+                }
+            }
             for idx in taken.into_iter().rev() {
                 let key = g.chunk_queue.remove(idx);
                 g.sent_chunks.insert(key);
@@ -1675,6 +1691,7 @@ impl Hub {
     }
 
     fn broadcast_block_changes(&mut self, world: &mut World) {
+        self.broadcast_mod_block_entities(world);
         let Some(log) = world.block_log.as_mut() else {
             return;
         };
@@ -1737,6 +1754,18 @@ impl Hub {
                         .get(&(x >> 4, z >> 4))
                         .and_then(|c| super::chunks::pot_tag(c, (x, y, z))),
                 };
+                // A mod block entity's client view, after its block: a client
+                // drops it when the block changes.
+                if let Some(packet) = world
+                    .block_entities
+                    .get(&(x, y, z))
+                    .and_then(|e| super::chunks::mod_block_entity_packet((x, y, z), e))
+                {
+                    let body = packet.encode();
+                    for &i in &viewers {
+                        self.guests[i].sender.send(body.clone());
+                    }
+                }
                 let Some(tag) = tag else {
                     continue;
                 };
@@ -1752,6 +1781,32 @@ impl Hub {
                 .encode();
                 for &i in &viewers {
                     self.guests[i].sender.send(body.clone());
+                }
+            }
+        }
+    }
+
+    /// The client views mods asked to send again
+    /// (`World::mod_block_entity_log`), to the players with the chunk.
+    fn broadcast_mod_block_entities(&mut self, world: &mut World) {
+        if world.mod_block_entity_log.is_empty() {
+            return;
+        }
+        let mut log = std::mem::take(&mut world.mod_block_entity_log);
+        log.sort_unstable();
+        log.dedup();
+        for (x, y, z) in log {
+            let Some(packet) = world
+                .block_entities
+                .get(&(x, y, z))
+                .and_then(|e| super::chunks::mod_block_entity_packet((x, y, z), e))
+            else {
+                continue;
+            };
+            let body = packet.encode();
+            for g in self.guests.iter().filter(|g| self.here(g)) {
+                if g.sent_chunks.contains(&(x >> 4, z >> 4)) {
+                    g.sender.send(body.clone());
                 }
             }
         }

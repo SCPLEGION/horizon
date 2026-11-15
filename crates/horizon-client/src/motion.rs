@@ -356,6 +356,8 @@ pub struct PlayerMotion {
     pub teleported: bool,
     pub events: Vec<MotionEvent>,
     pub attributes: LiveAttributes<Box<dyn FnMut() -> i32>>,
+    /// NeoForge's `SWIM_SPEED` attribute (base 1): a mod's gear scales the water thrust with it (`native_gear_attributes`).
+    pub swim_speed: f64,
     pub impulse: ImpulseContext,
     /// `ServerPlayer.spawnExtraParticlesOnFall`: a mace smash on a grounded
     /// target makes the next landing throw up the block below.
@@ -398,6 +400,22 @@ pub struct PlayerMotion {
     /// The last hurts taken (`hurt_blocking`), newest last, for tests and
     /// the control socket's `hurtlog`.
     pub hurt_log: Vec<crate::health::HurtRecord>,
+    /// The share (0 to 1) of each hurt that a mod's armor takes before the
+    /// player's own armor sees it (a powered suit), set by the game from
+    /// `native_player_damage`. Sources tagged `minecraft:bypasses_armor` pass
+    /// it by. Server-side only.
+    pub damage_absorption: f32,
+    /// Damage types (registry ids, `minecraft:magic`) or tags (`#minecraft:is_fire`) that do the player nothing, set
+    /// by the game from `native_player_immunities` each tick (a gas mask against magic). Server-side only.
+    pub damage_immune: Vec<String>,
+    /// Shares of the damage of some types (`minecraft:magic`, `#minecraft:is_fire`) that a mod's armor takes, set by the
+    /// game from `native_player_damage_rules` each tick; they apply to sources that bypass armor too. Server-side only.
+    pub damage_rules: Vec<(String, f32)>,
+    /// The damage `damage_rules` took since the game last read it, for the mod to pay for.
+    pub damage_rules_taken: f32,
+    /// The damage `damage_absorption` took since the game last read it, for
+    /// the mod to pay for (`native_player_damage`).
+    pub damage_absorbed: f32,
     /// The last melee attacks made on mobs, newest last.
     pub attack_log: Vec<crate::health::AttackRecord>,
     /// The level's world border, whose walls stop the player's movement
@@ -556,6 +574,7 @@ impl PlayerMotion {
             teleported: false,
             events: Vec::new(),
             attributes,
+            swim_speed: 1.0,
             fluids: PlayerFluids::default(),
             in_powder_snow: false,
             was_in_powder_snow: false,
@@ -570,6 +589,11 @@ impl PlayerMotion {
             block_effects: true,
             powder_snow_entered: Vec::new(),
             hurt_log: Vec::new(),
+            damage_absorption: 0.0,
+            damage_immune: Vec::new(),
+            damage_rules: Vec::new(),
+            damage_rules_taken: 0.0,
+            damage_absorbed: 0.0,
             attack_log: Vec::new(),
             border: None,
         })

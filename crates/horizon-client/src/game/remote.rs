@@ -3622,6 +3622,12 @@ impl Game<'_> {
                     self.titles.reset_times();
                 }
             }
+            C::CustomPayload(p)
+                if p.channel == horizon_client::lan::chunks::MOD_BLOCK_ENTITY_CHANNEL =>
+            {
+                self.remote_mod_block_entity(&p.data)
+            }
+            C::CustomPayload(p) => self.native_client_payload(&p.channel, &p.data),
             _ => {}
         }
         Ok(())
@@ -5652,6 +5658,13 @@ impl Game<'_> {
             && self.before_block(distance)
         {
             let id = self.mobs[i].id as i32;
+            // Native mods: a mob of their own takes the click (opens its screen).
+            let mut claimed = false;
+            self.native_use_mob(id as u32, &mut claimed);
+            if claimed {
+                self.with_hand(hand, Game::swing_arm);
+                return true;
+            }
             self.send(S::Interact(play::Interact {
                 id,
                 hand: hand_id(hand),
@@ -5988,10 +6001,14 @@ impl Game<'_> {
         // BeehiveBlock.useItemOn: shears or a glass bottle on a full hive
         // (honey level 5) is SUCCESS, so the click ends after UseItemOn and
         // no UseItem follows (the server does the harvest, see `use_beehive`).
-        if held.is_some_and(|s| matches!(&*s.item, "minecraft:shears" | "minecraft:glass_bottle"))
-            && self
-                .hive_state(hit.pos)
-                .is_some_and(|(honey, _)| honey == Some(5))
+        if held.is_some_and(|s| {
+            matches!(
+                self.acting_item_id(s).as_str(),
+                "minecraft:shears" | "minecraft:glass_bottle"
+            )
+        }) && self
+            .hive_state(hit.pos)
+            .is_some_and(|(honey, _)| honey == Some(5))
         {
             return (InteractionResult::Success, DryUse::default());
         }
@@ -6276,6 +6293,7 @@ impl Game<'_> {
             _ if bundle => true,
             // BowItem.use: with an arrow, or in creative.
             "minecraft:bow" => self.creative || self.projectile_slot("minecraft:bow").is_some(),
+            id if self.mod_is_bow(id) => self.creative || self.projectile_slot("minecraft:bow").is_some(),
             // CrossbowItem.use: charging when not charged and with ammunition;
             // a charged one shoots on the server.
             "minecraft:crossbow" => {
@@ -6825,6 +6843,7 @@ impl Game<'_> {
                 self.recipe_ui.reset_screen();
                 if self.creative {
                     self.screen = Screen::Creative;
+                    self.load_mod_creative_tabs();
                     self.refresh_creative_tabs();
                     self.creative_screen.reopen();
                     self.refresh_saved_hotbars();
@@ -6940,6 +6959,9 @@ impl Game<'_> {
         } else {
             Input::Pickup
         };
+        if (500..=504).contains(&internal) && self.native_screen_slots().is_some() {
+            return self.remote_worn_click(internal, right, input);
+        }
         if self.screen == Screen::Creative {
             // CreativeModeInventoryScreen.slotClicked: the Survival Inventory tab clicks the
             // player's own InventoryMenu, and its CreativeInventoryListener sends each slot that
@@ -6949,6 +6971,25 @@ impl Game<'_> {
             return;
         }
         self.remote_menu_ops(&[(Some(internal), i32::from(right), input)]);
+    }
+    /// A click on a worn slot (armor, off hand) of a mod's screen: the menu has none, so it goes
+    /// to the player's own inventory menu (window 0), which a Horizon server answers while another
+    /// menu is open. The server answers with the slots and the carried stack as they are.
+    fn remote_worn_click(&mut self, internal: usize, right: bool, input: Input) {
+        let Some(slot) = Self::menu_slot_index("inventory", internal) else {
+            return;
+        };
+        let state = self.remote.as_ref().map_or(0, |r| r.state_id);
+        let carried = self.to_network(&self.carried).map(|s| Hashed::of(&s));
+        self.send(S::ContainerClick(play::ContainerClick {
+            container: 0,
+            state,
+            slot: slot as i16,
+            button: i8::from(right),
+            input: input_ordinal(input) as _,
+            changed: Vec::new(),
+            carried,
+        }));
     }
     /// `AbstractContainerMenu.setItem`/`initializeContents`: the state id a
     /// click answers with is the open menu's, not another window's.
@@ -8018,6 +8059,13 @@ impl Remote {
         self.players.len()
     }
     /// The local player's profile UUID.
+    /// The profile UUID of the player entity `id`, if it is another player in the level.
+    pub(super) fn level_player(&self, id: i32) -> Option<u128> {
+        self.level_players
+            .get(&id)
+            .copied()
+            .filter(|u| *u != self.profile)
+    }
     pub(super) fn profile(&self) -> u128 {
         self.profile
     }

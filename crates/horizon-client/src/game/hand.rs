@@ -260,12 +260,14 @@ impl Game<'_> {
     pub(super) fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
         let block_break_speed = self.block_break_speed();
         let state = self.world.block(pos[0], pos[1], pos[2]);
+        let submerged = self.submerged_mining_speed();
         let facts = self.res.facts().get(state);
         if facts.hardness == -1.0 {
             return 0.0;
         }
         let held = self.held();
         let mut speed = self.items().mining_speed(held, &facts.name);
+        self.native_destroy_speed(held, &facts.name, facts.hardness, &mut speed);
         speed = self.modify_destroy_speed(speed);
         speed *= block_break_speed;
         if let Some(eye) = self.eye_position()
@@ -280,7 +282,7 @@ impl Game<'_> {
                 .fluid
                 == horizon_client::blocks::Fluid::Water
         {
-            speed *= self.submerged_mining_speed();
+            speed *= submerged;
         }
         if self.player.as_ref().is_some_and(|p| !p.ground.on_ground) {
             speed /= 5.0;
@@ -530,10 +532,16 @@ impl Game<'_> {
                     .map(|value| value.base_value())
             })
             .unwrap_or(horizon_client::attack_strength::BASE_ATTACK_SPEED);
-        let value = base
-            + self
-                .attack_item_info()
-                .map_or(0.0, |i| f64::from(i.attack_speed));
+        let mut item_speed = self
+            .attack_item_info()
+            .map_or(0.0, |i| f64::from(i.attack_speed));
+        if let Some(held) = self
+            .held()
+            .filter(|h| self.attack_item.as_deref() == Some(&*h.item))
+        {
+            self.native_attack_speed(held, &mut item_speed);
+        }
+        let value = base + item_speed;
         self.potions
             .effects
             .modifiers()

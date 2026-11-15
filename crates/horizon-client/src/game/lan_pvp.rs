@@ -161,7 +161,8 @@ impl Game<'_> {
     pub(super) fn pvp_strike(&mut self) -> Option<Strike> {
         let p = self.player.as_ref()?;
         let from = [p.position.x, p.position.y, p.position.z];
-        let (amount, scale, crit, magic) = self.melee_damage("minecraft:player", true);
+        let (mut amount, scale, crit, magic) = self.melee_damage("minecraft:player", true);
+        self.native_player_attack("minecraft:player", scale, &mut amount);
         let sweep = self.sweep_attack_position(scale, crit);
         let (strength, knockback_attack) = self.extra_knockback("minecraft:player", scale);
         let (xd, zd) = self.extra_knockback_direction();

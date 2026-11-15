@@ -638,7 +638,9 @@ impl Game<'_> {
             self.tick_village_siege();
         }
         self.tick_raids();
-        self.tick_creature_entities()
+        let result = self.tick_creature_entities();
+        self.native_mobs_tick();
+        result
     }
     /// `DistanceManager.inEntityTickingRange` in an entity-ticking chunk
     /// (block coordinates), from every player's tickets (`update_chunk_tickets`).
@@ -908,6 +910,11 @@ impl Game<'_> {
     }
     /// LivingEntity.die / dropAllDeathLoot.
     fn mob_died(&mut self, m: &Mob) {
+        self.native_mob_died(
+            &m.kind.id,
+            [m.position.x, m.position.y, m.position.z],
+            m.extra.mod_data.as_ref(),
+        );
         // LivingEntity.die: a sleeper gets up, and its bed is free again.
         if let Some(bed) = horizon_client::mobs::villager::sleeping_pos(m) {
             self.wake_villager(m.id);
@@ -4106,7 +4113,10 @@ impl Game<'_> {
             return Ok(true);
         }
         {
-            let item = self.held().map(|h| h.item.to_string()).unwrap_or_default();
+            let item = self
+                .held()
+                .map(|h| self.acting_item_id(h))
+                .unwrap_or_default();
             let used = self.held().cloned();
             if self.interact_leash(index, &item) {
                 if let Some(stack) = &used {
@@ -4124,7 +4134,7 @@ impl Game<'_> {
         let held = self.held().cloned();
         let item = held
             .as_ref()
-            .map(|h| h.item.to_string())
+            .map(|h| self.acting_item_id(h))
             .unwrap_or_default();
         // Bucketable.bucketMobPickup: a water bucket scoops up a fish, a
         // tadpole or an axolotl, with the data its bucket carries.
@@ -4317,7 +4327,7 @@ impl Game<'_> {
                     at: pos,
                     setup,
                 }])?;
-                self.damage_held_tool();
+                self.shear_wear();
             }
             Species::Sheep if item == "minecraft:shears" && !m.extra.sheared && !m.is_baby() => {
                 m.extra.sheared = true;
@@ -4330,7 +4340,7 @@ impl Game<'_> {
                 );
                 drops.extend(stacks.into_iter().map(|s| (s.item.to_string(), s.count)));
                 sound = Some("entity.sheep.shear");
-                self.damage_held_tool();
+                self.shear_wear();
             }
             Species::Sheep if item.ends_with("_dye") => {
                 let name = item
@@ -4364,7 +4374,7 @@ impl Game<'_> {
                 m.extra.head = None;
                 m.extra.body_damage = 0;
                 eat = Some(("item.armor.unequip_wolf", 1.0, 1.0));
-                self.damage_held_tool();
+                self.shear_wear();
             }
             // Wolf.mobInteract: heal, dye the collar or sit/stand when tame;
             // a bone tames a wild one a third of the time.
@@ -4815,7 +4825,7 @@ impl Game<'_> {
         }
         let ctx = self.who_context(Some(horizon_client::mobs::Who::Player), None);
         self.post_game_event("minecraft:shear", [at.x, at.y, at.z], ctx);
-        self.damage_held_tool();
+        self.shear_wear();
         true
     }
     /// `Armadillo.mobInteract`: a brush brushes a scute off an adult
@@ -5110,6 +5120,12 @@ impl Game<'_> {
             // LevelRenderer: the entity the view looks out of is not drawn
             // in first person.
             if self.hides_as_camera(mob.id) {
+                continue;
+            }
+            // A native mod draws this mob itself (API 48).
+            let mut hidden = false;
+            self.native_mob_hidden(mob.id, &mob.kind.id, &mut hidden);
+            if hidden {
                 continue;
             }
             let d = glam::DVec3::new(mob.position.x, mob.position.y, mob.position.z) - camera;

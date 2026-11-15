@@ -93,6 +93,10 @@ pub struct World {
     /// Every block position written since the log was last drained, kept
     /// only while the world is open to the network (see `lan`).
     pub block_log: Option<Vec<(i32, i32, i32)>>,
+    /// Mod block entities whose client view (their `client` compound) a mod
+    /// asked to send again, kept like `block_log` while the world is open to
+    /// the network.
+    pub mod_block_entity_log: Vec<(i32, i32, i32)>,
     /// Every write since the mobs last ticked (position, old and new state),
     /// for `ServerLevel.sendBlockUpdated`'s path recomputing; kept only while
     /// the mobs of this world tick (`game/creatures.rs`).
@@ -199,6 +203,7 @@ impl World {
             day_time: 1000,
             weather: Weather::default(),
             block_log: None,
+            mod_block_entity_log: Vec::new(),
             path_writes: None,
             light_log: None,
             moving_piston_fallback: Vec::new(),

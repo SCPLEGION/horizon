@@ -121,6 +121,31 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_tooltip"
     },
     {
+      "name": "screen_overlay",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_overlay"
+    },
+    {
+      "name": "screen_covers",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_covers"
+    },
+    {
+      "name": "creative_tabs",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_creative_tabs"
+    },
+    {
+      "name": "screen_typing",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_typing"
+    },
+    {
+      "name": "screen_key",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_key"
+    },
+    {
       "name": "menu_button",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_menu_button"
@@ -161,9 +186,54 @@
       "target": "horizon_client::game::native_hooks::Game<'_>::native_use_item"
     },
     {
+      "name": "using_tick",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_using_tick"
+    },
+    {
       "name": "destroy_block",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_destroy_block"
+    },
+    {
+      "name": "destroy_speed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_destroy_speed"
+    },
+    {
+      "name": "player_attack",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_player_attack"
+    },
+    {
+      "name": "player_damage",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_player_damage"
+    },
+    {
+      "name": "player_immunities",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_player_immunities"
+    },
+    {
+      "name": "player_damage_rules",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_player_damage_rules"
+    },
+    {
+      "name": "gear_attributes",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_gear_attributes"
+    },
+    {
+      "name": "glider",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_glider"
+    },
+    {
+      "name": "glide_wear",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_glide_wear"
     },
     {
       "name": "place_block",
@@ -174,6 +244,191 @@
       "name": "right_click_block",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_right_click_block"
+    },
+    {
+      "name": "client_payload",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_client_payload"
+    },
+    {
+      "name": "server_payload",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_server_payload"
+    },
+    {
+      "name": "client_block_entity_changed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_client_block_entity_changed"
+    },
+    {
+      "name": "screen_alt",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_alt"
+    },
+    {
+      "name": "screen_escape",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_escape"
+    },
+    {
+      "name": "slot_rules",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_slot_rules"
+    },
+    {
+      "name": "slot_rules_at",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_slot_rules_at"
+    },
+    {
+      "name": "screen_wheel",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_wheel"
+    },
+    {
+      "name": "world_boxes",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_boxes"
+    },
+    {
+      "name": "block_redirect",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_block_redirect"
+    },
+    {
+      "name": "block_removed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_block_removed"
+    },
+    {
+      "name": "world_models",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_models"
+    },
+    {
+      "name": "ui_draw",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_draw"
+    },
+    {
+      "name": "ui_click",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_click"
+    },
+    {
+      "name": "ui_key",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_key"
+    },
+    {
+      "name": "ui_wheel",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_wheel"
+    },
+    {
+      "name": "ui_closed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_ui_closed"
+    },
+    {
+      "name": "mob_types",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mob_types"
+    },
+    {
+      "name": "mobs_tick",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mobs_tick"
+    },
+    {
+      "name": "mob_died",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mob_died"
+    },
+    {
+      "name": "use_mob",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_use_mob"
+    },
+    {
+      "name": "world_items",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_items"
+    },
+    {
+      "name": "world_texts",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_texts"
+    },
+    {
+      "name": "mob_hidden",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_mob_hidden"
+    },
+    {
+      "name": "world_quads",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_world_quads"
+    },
+    {
+      "name": "fog",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_fog"
+    },
+    {
+      "name": "worn_tint",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_worn_tint"
+    },
+    {
+      "name": "acts_as_shears",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_acts_as_shears"
+    },
+    {
+      "name": "shears_used",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_used"
+    },
+    {
+      "name": "shears_trim",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_shears_trim"
+    },
+    {
+      "name": "drink_item",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_drink_item"
+    },
+    {
+      "name": "bow_item",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_bow_item"
+    },
+    {
+      "name": "bow_shot",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_bow_shot"
+    },
+    {
+      "name": "attack_speed",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_attack_speed"
+    },
+    {
+      "name": "may_fly",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_may_fly"
+    },
+    {
+      "name": "item_bars",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_item_bars"
+    },
+    {
+      "name": "worldgen_entries",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_worldgen_entries"
     }
   ]
 }

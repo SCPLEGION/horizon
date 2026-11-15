@@ -301,6 +301,31 @@ impl PlayerEffects {
         }
         (actions, added)
     }
+    /// The timed effects (`duration > 0`) as (index, category: 0 beneficial, 1 neutral, 2 harmful), for a mod that speeds
+    /// some of them up.
+    pub fn timed(&self) -> Vec<(usize, u8)> {
+        self.list
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| e.duration > 0)
+            .map(|(i, e)| {
+                let category = match potions::effect(e.id).map(|d| d.category) {
+                    Some(potions::Category::Beneficial) | None => 0,
+                    Some(potions::Category::Neutral) => 1,
+                    Some(potions::Category::Harmful) => 2,
+                };
+                (i, category)
+            })
+            .collect()
+    }
+    /// `MekanismUtils.speedUpEffectSafely`: the effect at `index` counts one tick down (and gives way to the effect it hid
+    /// when it runs out) without applying its periodic effect.
+    pub fn speed_up(&mut self, index: usize) {
+        if let Some(e) = self.list.get_mut(index).filter(|e| e.duration > 0) {
+            e.tick_down();
+            e.downgrade();
+        }
+    }
     /// `LivingEntity.tickEffects` (server part): actions to apply, in order.
     pub fn tick(&mut self) -> Vec<EffectAction> {
         self.tick_count = self.tick_count.wrapping_add(1);

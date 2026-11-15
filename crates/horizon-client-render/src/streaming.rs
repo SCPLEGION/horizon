@@ -333,6 +333,9 @@ pub struct Streaming {
     pub radius: i32,
     /// `/forceload`ed chunks: kept loaded whatever the distance.
     pub forced: HashSet<(i32, i32)>,
+    /// The chunks a mod keeps loaded (they are in `forced` too, but are not saved with it): the game time
+    /// each was last asked for. API 45.
+    pub mod_forced: std::collections::HashMap<(i32, i32), i64>,
     /// No work is scheduled while paused (title screen).
     pub paused: bool,
     /// The level loading screen is up: work goes ring by ring (`Ranges::rings`).
@@ -698,6 +701,7 @@ impl Streaming {
             center: (0, 0),
             radius: 8,
             forced: HashSet::new(),
+            mod_forced: std::collections::HashMap::new(),
             paused: false,
             loading: false,
             sky_light: true,

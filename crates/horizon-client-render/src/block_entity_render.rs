@@ -666,12 +666,16 @@ const TEXT_OVER_OUTLINE: f32 = 0.05;
 /// test. Here both share one mesh, so the text is lifted a hair towards the
 /// reader instead (a twentieth of a font pixel, invisible) rather than
 /// z-fighting with the outline under it.
-fn draw_text(scene: &Scene, call: &TextCall, out: &mut Vec<Vertex>) {
+pub fn draw_text(
+    glyph: &dyn Fn(char) -> (Option<Rect>, f32),
+    call: &TextCall,
+    out: &mut Vec<Vertex>,
+) {
     let mut emit = |dx: f32, dy: f32, z: f32, argb: u32| {
         let mut x = call.x + dx;
         let y0 = call.y + dy;
         for ch in call.text.chars() {
-            let (cell, advance) = (scene.glyph)(ch);
+            let (cell, advance) = glyph(ch);
             if let Some(r) = cell {
                 let corners = [(x, y0 + 8.0), (x + 8.0, y0 + 8.0), (x + 8.0, y0), (x, y0)];
                 let uvs = [[r.u0, r.v1], [r.u1, r.v1], [r.u1, r.v0], [r.u0, r.v0]];
@@ -1319,7 +1323,7 @@ impl BlockEntityRenderer {
                     let calls = sign_text_calls(scene, data, text, m, packed, near);
                     match scene.texts {
                         Some(sink) => sink.borrow_mut().extend(calls),
-                        None => calls.iter().for_each(|c| draw_text(scene, c, out)),
+                        None => calls.iter().for_each(|c| draw_text(scene.glyph, c, out)),
                     }
                 }
             }
@@ -2342,7 +2346,7 @@ mod tests {
             light: 240 | 240 << 8,
         };
         let mut out = Vec::new();
-        draw_text(&scene, &call, &mut out);
+        draw_text(scene.glyph, &call, &mut out);
         // Eight outline copies, then the text, four corners a glyph.
         assert_eq!(out.len(), 9 * 2 * 4);
         let (outline, text) = out.split_at(8 * 2 * 4);
@@ -2354,7 +2358,7 @@ mod tests {
         );
         call.outline = 0;
         out.clear();
-        draw_text(&scene, &call, &mut out);
+        draw_text(scene.glyph, &call, &mut out);
         assert_eq!(out.len(), 2 * 4);
         assert!(out.iter().all(|v| v.pos[2] == 0.0));
     }

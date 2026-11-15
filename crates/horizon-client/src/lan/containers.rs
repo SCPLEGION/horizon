@@ -245,6 +245,7 @@ impl Hub {
             drag: None,
             sent_data: Vec::new(),
             hidden: Vec::new(),
+            rules: Vec::new(),
         });
         self.send_menu_content(i, items);
     }
@@ -259,6 +260,18 @@ impl Hub {
             .and_then(|g| g.menu.as_mut())
         {
             m.hidden = hidden;
+        }
+    }
+
+    /// What the slots of the open menu of `conn` take (a mod's screen).
+    pub fn set_menu_rules(&mut self, conn: u32, rules: Vec<crate::lan::menu::SlotRule>) {
+        if let Some(m) = self
+            .guests
+            .iter_mut()
+            .find(|g| g.conn == conn)
+            .and_then(|g| g.menu.as_mut())
+        {
+            m.rules = rules;
         }
     }
 
@@ -303,6 +316,7 @@ impl Hub {
             drag: None,
             sent_data: Vec::new(),
             hidden: Vec::new(),
+            rules: Vec::new(),
         });
         self.send_menu_content(i, items);
         Some(window)
@@ -530,6 +544,11 @@ impl Hub {
             .as_ref()
             .filter(|_| in_menu)
             .map_or_else(Vec::new, |m| m.hidden.clone());
+        let slot_rules = self.guests[i]
+            .menu
+            .as_ref()
+            .filter(|_| in_menu)
+            .map_or_else(Vec::new, |m| m.rules.clone());
         let guest = &mut self.guests[i];
         let mut items = source.and_then(|s| s.read(world, guest));
         if in_menu && items.is_none() {
@@ -540,6 +559,7 @@ impl Hub {
             container: items.as_deref_mut(),
             shulker,
             hidden: &hidden,
+            rules: &slot_rules,
         };
         let (drops, changed) = menu::click(
             &mut view,

@@ -79,6 +79,12 @@ template ([modpacks.md](modpacks.md#registries-02-data-driven-blocks-and-items))
   "item": true }
 ```
 
+A block that is not a cube sets its outline and collision with `shape`, boxes `[x0, y0, z0, x1, y1, z1]` in
+blocks (at most 64), the same for every state; or with `shapes`, `{ "property": "facing", "values": { "north": [...], ... } }`
+for one box list per value of a state property its template has. Neighbours cull their faces by that shape,
+and sky light passes a state whose shape is not a full cube, as in vanilla. `"occludes": false` in `properties` drops
+the occlusion altogether (a pipe on a full-cube template).
+
 An item copies its template's data components, with `max_stack_size` and
 `rarity` changed, and any other 26.3 component set or removed in
 `components`, written as a data component patch is: `minecraft:<type>` sets
@@ -146,6 +152,12 @@ itself. A name nobody defines is skipped.
 
 A pool addition holds `"elements"` as a pool does. `horizon-port-pack carry` writes these from the Lithostitched
 modifiers `add_structure_set_entries` and `add_template_pool_elements`.
+
+A mod adds its own placed features to biomes with NeoForge's biome modifier files, as carried NeoForge mods
+ship them: `data/<ns>/neoforge/biome_modifier/*.json` of type `neoforge:add_features`, naming the biomes (an
+id, a `#tag`, or a list) and the generation `step`. The features join each biome's list for that step, after
+vanilla's; tags resolve with the mods' biome tag additions. Other modifier types are skipped with a warning
+in the log. Configured features may sit in `worldgen/feature/` (26.3's folder) or `worldgen/configured_feature/`.
 
 A structure (and any of its pool elements, in place of the structure's) may hold
 `horizon:enhanced_terrain_adaptation`: MoogsStructureLib's terrain kernel, which carves or buries terrain around the
@@ -228,3 +240,14 @@ Horizon's own mods are native. They live in
 The game keeps the parts that must be fast, such as drawing the minimap's map, and a native mod picks the options
 ([extras.md](extras.md)). Far View is not a mod any more: its distance and detail are Graphics > LOD Distance and Far
 Detail ([graphics.md](graphics.md)).
+
+### Models on the wearer (`layers.horizon_models`)
+
+An equipment asset (`assets/<ns>/equipment/<item>.json`, named by the item's `minecraft:equippable` `asset_id`) can draw a mod's own
+models on the wearer: `"layers": { "horizon_models": [ { "model": "<ns>:<name>", "texture": "<ns>:<name>", "hide_with": ["<ns>:<item>"] } ] }`.
+`model` is an entity-model part tree in `assets/<ns>/horizon/worn_models/<name>.json` whose children are named for the wearer's parts
+(`head`, `body`, `left_arm`, `right_arm`, `left_leg`, `right_leg`), with polygons in pixels relative to each part; `texture` is
+`textures/entity/equipment/horizon_models/<name>.png`. `hide_with` (optional) leaves the layer out while any of those items is worn too
+(parts that show only without the neighbouring armour piece). `"emissive": true` draws the layer at full brightness and unshaded (LEDs), and
+`"translucent": true` with the translucent material (glass). `"hide_when_held": {"left": ["<ns>:<item>"], "right": [...]}` leaves the
+layer out while one of those items is held on that side of the model (the main hand is on the main arm's side).

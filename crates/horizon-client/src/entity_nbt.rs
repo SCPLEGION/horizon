@@ -1055,6 +1055,10 @@ pub fn mob_to_nbt(m: &Mob, uuid: [i32; 4], raw: Option<&Tag>) -> Tag {
         } else {
             map.insert("equipment".into(), Tag::Compound(equipment));
         }
+        // A native mod's data on the mob (API 46).
+        if let Some(data) = &m.extra.mod_data {
+            map.insert("mod_data".into(), Tag::Compound(data.clone()));
+        }
     }
     tag
 }
@@ -1320,6 +1324,9 @@ pub fn mob_from_nbt(tag: &Tag, types: &HashMap<String, Arc<MobType>>, id: u32) -
     }
     m.silent = flag(tag, "Silent");
     m.invulnerable_flag = flag(tag, "Invulnerable");
+    if let Some(Tag::Compound(data)) = tag.get("mod_data") {
+        m.extra.mod_data = Some(data.clone());
+    }
     if m.species() == crate::mobs::Species::Bat {
         // Bat.readAdditionalSaveData: BatFlags bit 0, resting.
         m.extra.flag = number(tag.get("BatFlags")).unwrap_or(0) & 1 != 0;

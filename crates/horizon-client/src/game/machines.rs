@@ -615,6 +615,55 @@ impl Game<'_> {
         };
         self.add_item(None, &view, stack, Some(face))
     }
+    /// Takes up to `max` items of one stack out of the block container at
+    /// `pos` through its side `face`, from the first slot a hopper below or
+    /// beside it could take from (`getSlotsForFace`, `canTakeItemThroughFace`):
+    /// a mod's item pipe. `None` when nothing can be taken. Composters give
+    /// nothing here.
+    pub(super) fn extract_from_container(
+        &mut self,
+        pos: Pos,
+        face: Direction,
+        max: u32,
+    ) -> Option<ItemStack> {
+        self.extract_from_container_where(pos, face, max, &|_| true)
+    }
+    /// `extract_from_container`, skipping the stacks `wanted` turns down.
+    pub(super) fn extract_from_container_where(
+        &mut self,
+        pos: Pos,
+        face: Direction,
+        max: u32,
+        wanted: &dyn Fn(&ItemStack) -> bool,
+    ) -> Option<ItemStack> {
+        let source = self.containers().view(pos, false)?;
+        if let Kind::Composter(_) = source.kind {
+            return None;
+        }
+        for slot in source.slots_for_face(Some(face)) {
+            let c = self.containers();
+            let Some(stack) = c.get(&source, slot) else {
+                continue;
+            };
+            if max == 0 || !wanted(stack) || !c.can_take(&source, slot, stack, face) {
+                continue;
+            }
+            let target = self.slot_mut_at(&source, slot)?;
+            let current = target.as_mut()?;
+            let n = current.count.min(max);
+            let taken = ItemStack {
+                count: n,
+                ..current.clone()
+            };
+            current.count -= n;
+            if current.count == 0 {
+                *target = None;
+            }
+            self.view_changed(&source);
+            return Some(taken);
+        }
+        None
+    }
     /// Remove one item from a slot (`removeItem(slot, 1)`).
     fn take_one(&mut self, view: &View, slot: usize) -> Option<ItemStack> {
         let target = self.slot_mut_at(view, slot)?;

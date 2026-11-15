@@ -1017,6 +1017,10 @@ impl Game<'_> {
         if !hidden.is_empty() {
             host.hub.hide_menu_slots(conn, hidden);
         }
+        let rules = self.mod_menu_rules(pos);
+        if !rules.is_empty() {
+            host.hub.set_menu_rules(conn, rules);
+        }
         true
     }
 
@@ -1635,6 +1639,14 @@ impl Game<'_> {
             S::ChatCommand(c) => self.guest_chat_command(host, conn, &c.command),
             S::CustomPayload(p) if p.channel == horizon_protocol::quiet::CHANNEL => {
                 self.guest_quiet_commands(host, conn, &p.data)
+            }
+            // As the sending player since API 26: their state is swapped in, so the hook can
+            // read and change what they wear and carry (`native_acting_player` names them).
+            S::CustomPayload(p) if super::native_hooks::mod_channel(&p.channel) => {
+                let uuid = host.hub.guests[gi].uuid;
+                self.as_guest(host, conn, |game| {
+                    game.native_server_payload(uuid, &p.channel, &p.data)
+                });
             }
             S::ChatCommandSigned(p) => self.guest_signed_command(host, conn, p),
             S::ChangeDifficulty(p) if host.hub.guests[gi].permission >= 2 => {
@@ -2585,6 +2597,40 @@ impl Game<'_> {
                 // is taken as soon as it comes.
                 self.guest_die(host, gi, conn);
                 continue;
+            }
+            // A mod's armor: what it took since the last call, and its share
+            // of the hits to come (`native_player_damage`).
+            let absorbed = host.hub.guests[gi]
+                .motion
+                .as_ref()
+                .map_or(0.0, |m| m.damage_absorbed);
+            self.as_guest(host, conn, |g| {
+                let mut immune = Vec::new();
+                g.native_player_immunities(&mut immune);
+                if let Some(p) = g.player.as_mut() {
+                    p.damage_immune = immune;
+                }
+                let taken = g
+                    .player
+                    .as_mut()
+                    .map_or(0.0, |p| std::mem::take(&mut p.damage_rules_taken));
+                let mut rules = Vec::new();
+                g.native_player_damage_rules(taken, &mut rules);
+                if let Some(p) = g.player.as_mut() {
+                    p.damage_rules = rules;
+                }
+            });
+            if absorbed > 0.0 || self.world.game_time % 10 == 0 {
+                self.as_guest(host, conn, |g| {
+                    if let Some(p) = g.player.as_mut() {
+                        p.damage_absorbed = 0.0;
+                    }
+                    let mut share = g.player.as_ref().map_or(0.0, |p| p.damage_absorption);
+                    g.native_player_damage(absorbed, &mut share);
+                    if let Some(p) = g.player.as_mut() {
+                        p.damage_absorption = share;
+                    }
+                });
             }
             let play = host.play.entry(conn).or_default();
             // ServerGamePacketListenerImpl.tick's dropSpamThrottler.

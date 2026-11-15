@@ -423,6 +423,7 @@ impl Game<'_> {
             Screen::DialogWarning => "dialog-warning",
             Screen::CommandBlock => "command-block",
             Screen::BlockEditor => "block-editor",
+            Screen::ModUi => "mod-ui",
             Screen::Win => "win",
         }
     }
