@@ -1515,6 +1515,12 @@ fn render_visible(
         }
     }
     let mut all_layers = layers(m, s.age);
+    // A native mod's type draws its layers with its own textures (Mekanism Additions' baby enderman's eyes).
+    for layer in &mut all_layers {
+        if let Some(texture) = super::mod_layer_texture(&m.kind.id, &layer.texture) {
+            layer.texture = texture;
+        }
+    }
     // WardenRenderer: the translucent emissive layers fade with the animations.
     if m.species() == Species::Warden {
         for (model, texture, a) in super::warden::emissive_layers(m, alpha) {
@@ -1586,7 +1592,8 @@ fn render_visible(
     // EnergySwirlLayer: the armour model, additive, scrolling over the sprite.
     if let Some((model, texture, x_offset)) = energy_swirl(m, s.age)
         && let Some(part) = m.kind.layer(model)
-        && let Some([u0, v0, u1, v1]) = atlas(texture)
+        && let swirl = super::mod_layer_texture(&m.kind.id, texture)
+        && let Some([u0, v0, u1, v1]) = atlas(swirl.as_deref().unwrap_or(texture))
     {
         layer_poses.reset(part);
         anim::setup(m, &s, &mut layer_poses, &data.animations);

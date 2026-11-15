@@ -780,6 +780,8 @@ pub struct Extra {
     pub mod_xp: f32,
     /// A native mod's factor on this mob's explosion radius (a baby creeper's half); 0 is none. API 83.
     pub mod_blast: f32,
+    /// A native mod's factor on the damage of the arrows this mob shoots (Mekanism Additions' baby skeletons); 0 is none. API 85.
+    pub mod_arrow: f32,
     /// Players: crouching and riding (HumanoidModel's poses).
     pub crouching: bool,
     /// A player's or mannequin's synced pose (`Entity.DATA_POSE`), which
@@ -2853,6 +2855,33 @@ impl EntityModelDocument {
 /// The vanilla type each mob type of a native mod is sent as: networking and clients know only the
 /// registry's types, so a mod's mob appears to them as its base until the mod's own client draws it. API 46.
 static MOD_MOB_BASES: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+
+/// A mod type's replacements for the textures of the layers it inherits: (type id, vanilla texture, its own).
+static MOD_LAYER_TEXTURES: std::sync::Mutex<Vec<(String, String, String)>> =
+    std::sync::Mutex::new(Vec::new());
+
+/// Declares that mob type `id` (added by a mod) draws the layer textured `from` with `to` instead. API 85.
+pub fn register_mod_layer_texture(id: &str, from: &str, to: &str) {
+    let mut all = MOD_LAYER_TEXTURES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if !all.iter().any(|(i, f, _)| i == id && f == from) {
+        all.push((id.to_owned(), from.to_owned(), to.to_owned()));
+    }
+}
+
+/// The texture a mod type draws the layer textured `from` with, if it replaced it.
+pub fn mod_layer_texture(id: &str, from: &str) -> Option<String> {
+    if id.starts_with("minecraft:") {
+        return None;
+    }
+    let all = MOD_LAYER_TEXTURES
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    all.iter()
+        .find(|(i, f, _)| i == id && f == from)
+        .map(|(_, _, t)| t.clone())
+}
 
 /// Declares that mob type `id` (added by a mod) is sent as `base`.
 pub fn register_mod_mob_base(id: &str, base: &str) {
