@@ -615,6 +615,40 @@ impl Game<'_> {
         };
         self.add_item(None, &view, stack, Some(face))
     }
+    /// How many of `stack` `insert_into_container` would put into the block container at `pos` through
+    /// its side `face`, without changing anything: a mod's item pipe choosing where to send an item.
+    pub(super) fn simulate_insert_into_container(&mut self, pos: Pos, stack: &ItemStack, face: Direction) -> u32 {
+        let Some(view) = self.containers().view(pos, false) else {
+            return 0;
+        };
+        if let Kind::Composter(_) = view.kind {
+            return 0;
+        }
+        let slots: Vec<usize> = if matches!(view.kind, Kind::Furnace | Kind::Brewing | Kind::Mod) {
+            view.slots_for_face(Some(face)).into_iter().collect()
+        } else {
+            (0..view.len()).collect()
+        };
+        let c = self.containers();
+        let max = c.max_stack(stack);
+        let mut left = stack.count;
+        for slot in slots {
+            if left == 0 {
+                break;
+            }
+            if !c.can_place(&view, slot, stack) {
+                continue;
+            }
+            match c.get(&view, slot) {
+                None => left = 0,
+                Some(current) if current.count <= max && current.same_item_same_components(stack) => {
+                    left -= left.min(max.saturating_sub(current.count));
+                }
+                Some(_) => {}
+            }
+        }
+        stack.count - left
+    }
     /// Takes up to `max` items of one stack out of the block container at
     /// `pos` through its side `face`, from the first slot a hopper below or
     /// beside it could take from (`getSlotsForFace`, `canTakeItemThroughFace`):
