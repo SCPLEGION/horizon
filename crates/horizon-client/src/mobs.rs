@@ -780,6 +780,8 @@ pub struct Extra {
     pub mod_xp: f32,
     /// A native mod's factor on this mob's explosion radius (a baby creeper's half); 0 is none. API 83.
     pub mod_blast: f32,
+    /// A native mod's factor on the damage of the arrows this mob shoots (Mekanism Additions' baby skeletons); 0 is none. API 85.
+    pub mod_arrow: f32,
     /// Players: crouching and riding (HumanoidModel's poses).
     pub crouching: bool,
     /// A player's or mannequin's synced pose (`Entity.DATA_POSE`), which

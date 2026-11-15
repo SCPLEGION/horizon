@@ -240,7 +240,7 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
-API 85 adds `horizon_client::mobs::register_mod_layer_texture(id, from, to)`: a mod's mob type (`native_mob_types`) draws a layer it inherits (an enderman's eyes, a creeper's charge) with its own texture, as `to` (Mekanism Additions' baby mobs have models of their own, set on the type's `model` and `layers`). Bundles that use it need `"hooks": 85`.
+API 85 adds `horizon_client::mobs::register_mod_layer_texture(id, from, to)`: a mod's mob type (`native_mob_types`) draws a layer it inherits (an enderman's eyes, a creeper's charge) with its own texture, as `to` (Mekanism Additions' baby mobs have models of their own, set on the type's `model` and `layers`), and `Extra::mod_arrow`: a factor on the damage of the arrows a skeleton shoots (0 for none). Bundles that use it need `"hooks": 85`.
 
 API 84 adds `Extra::mod_xp` and `Extra::mod_blast` (a mob's experience reward and creeper explosion radius, times a factor; 0 for none) and the `native_biome_spawns(biomes)` hook (the biomes are loaded: a mod adds spawn entries to `biomes.list[..].spawns`): Mekanism Additions' baby mobs. Bundles that use them need `"hooks": 84`.
 

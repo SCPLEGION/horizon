@@ -874,6 +874,11 @@ pub fn perform_ranged_attack(m: &mut Mob, who: Who, cx: &mut Cx, power: f32) {
     let id = i32::from(cx.w.difficulty.id);
     let mut arrow_random = crate::projectiles::own_random(m);
     let base = f64::from(power) * 2.0 + arrow_random.triangle(f64::from(id) * 0.11, 0.574_25);
+    let base = if m.extra.mod_arrow > 0.0 {
+        base * f64::from(m.extra.mod_arrow)
+    } else {
+        base
+    };
     let effect = match m.species() {
         Species::Stray => Some(("minecraft:slowness", 600)),
         Species::Bogged => Some(("minecraft:poison", 100)),
