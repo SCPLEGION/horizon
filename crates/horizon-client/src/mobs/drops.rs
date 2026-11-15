@@ -586,6 +586,9 @@ pub fn base_experience(m: &mut Mob) -> i32 {
             if zombie_family(s) && m.is_baby() {
                 reward = (reward as f32 * 2.5) as i32;
             }
+            if m.extra.mod_xp > 0.0 {
+                reward = (reward as f32 * m.extra.mod_xp) as i32;
+            }
             if reward > 0 {
                 let mut result = reward;
                 for slot in SLOTS {

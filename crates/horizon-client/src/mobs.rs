@@ -776,6 +776,10 @@ pub struct Extra {
     pub model_scale: f32,
     /// A native mod's own scale for how this mob is drawn (Mekanism Additions' baby mobs, drawn at half size); 0 is none. API 80.
     pub mod_scale: f32,
+    /// A native mod's factor on this mob's experience reward (Mekanism Additions' babies, 2.5); 0 is none. API 83.
+    pub mod_xp: f32,
+    /// A native mod's factor on this mob's explosion radius (a baby creeper's half); 0 is none. API 83.
+    pub mod_blast: f32,
     /// Players: crouching and riding (HumanoidModel's poses).
     pub crouching: bool,
     /// A player's or mannequin's synced pose (`Entity.DATA_POSE`), which
