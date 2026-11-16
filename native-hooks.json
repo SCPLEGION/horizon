@@ -449,6 +449,26 @@
       "name": "screen_drop",
       "version": 1,
       "target": "horizon_client::game::native_hooks::Game<'_>::native_screen_drop"
+    },
+    {
+      "name": "container_draw",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_container_draw"
+    },
+    {
+      "name": "container_click",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_container_click"
+    },
+    {
+      "name": "container_key",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_container_key"
+    },
+    {
+      "name": "container_wheel",
+      "version": 1,
+      "target": "horizon_client::game::native_hooks::Game<'_>::native_container_wheel"
     }
   ]
 }

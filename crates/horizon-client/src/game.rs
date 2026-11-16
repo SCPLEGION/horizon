@@ -163,6 +163,7 @@ mod moving_pistons;
 mod music;
 mod names;
 mod native_chunks;
+mod native_container;
 mod native_hooks;
 mod native_lifecycle;
 mod native_menus;
@@ -7258,6 +7259,7 @@ impl Game<'_> {
             Screen::ModUi => self.draw_native_ui(&mut batch),
             Screen::Inventory => {
                 self.draw_inventory(&mut batch);
+                self.draw_native_container(&mut batch);
                 self.draw_mod_browser(&mut batch);
             }
             Screen::Creative => {
@@ -8453,7 +8455,7 @@ impl Game<'_> {
     fn inventory_press(&mut self, right: bool) {
         use horizon_client::container_screen::Target;
         use horizon_client::menu::Input;
-        if self.mod_browser_press(right) {
+        if self.native_container_press(right) || self.mod_browser_press(right) {
             return;
         }
         if !right && self.sort_press() {
@@ -8855,7 +8857,10 @@ impl Game<'_> {
         }
     }
     fn click_inventory(&mut self, right: bool) {
-        if self.mod_browser_press(right) || self.mount_click(right) {
+        if self.native_container_press(right)
+            || self.mod_browser_press(right)
+            || self.mount_click(right)
+        {
             return;
         }
         if self.recipe_book_click(right) {
@@ -14487,7 +14492,7 @@ impl ApplicationHandler for Game<'_> {
                     if self.screen == Screen::Inventory
                         && d != 0.0
                         && !bundle
-                        && self.wheel_taken_by_mod(d)
+                        && (self.native_container_wheel_event(d) || self.wheel_taken_by_mod(d))
                     {
                         return Ok(());
                     }
@@ -14842,6 +14847,13 @@ impl ApplicationHandler for Game<'_> {
                 {
                     // A native mod's own screen takes every key but Escape.
                     self.native_ui_key_event(&event);
+                }
+                WindowEvent::KeyboardInput { event, .. }
+                    if self.screen == Screen::Inventory
+                        && !matches!(event.physical_key, PhysicalKey::Code(KeyCode::Escape))
+                        && self.native_container_key_event(&event) =>
+                {
+                    // A mod claimed the key on a container screen (a search box, a viewer's hotkey).
                 }
                 WindowEvent::KeyboardInput { event, .. }
                     if self.recipe_search_focused()

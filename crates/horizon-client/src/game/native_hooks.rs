@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 86;
+pub(crate) const NATIVE_HOOKS_API: u32 = 87;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1265,6 +1265,41 @@ impl Game<'_> {
         taken: &mut bool,
     ) {
         let _ = (block, data, at, stack, taken);
+    }
+    /// A container screen (the inventory, a chest, a vanilla station: any screen with a window of slots) is drawn:
+    /// draw over it, under the cursor's tooltip. `window` is the screen's window (left, top, width, height) in GUI
+    /// pixels; `batch.width` by `batch.height` is the whole screen. For a viewer or overlay beside the window
+    /// (a recipe viewer's lists). API 87.
+    pub(super) fn native_container_draw(&self, window: [f32; 4], batch: &mut HudBatch) {
+        let _ = (window, batch);
+    }
+    /// A mouse press on a container screen, before the game handles it: `button` 0 left, 1 right; the cursor is at
+    /// `at` (GUI pixels, `native_cursor`). Set `claimed` to take the click: the game then does nothing with it. API 87.
+    pub(super) fn native_container_click(
+        &mut self,
+        window: [f32; 4],
+        at: [f32; 2],
+        button: u8,
+        claimed: &mut bool,
+    ) {
+        let _ = (window, at, button, claimed);
+    }
+    /// A key went down or up (`key.keyboard.*`, as `native_ui_key`) on a container screen, with the text it types
+    /// (a paste gives the clipboard), before the game handles it. Escape is not sent. Set `claimed` to take it
+    /// (a search box: the inventory key then does not close the screen). API 87.
+    pub(super) fn native_container_key(
+        &mut self,
+        key: &str,
+        text: Option<&str>,
+        pressed: bool,
+        claimed: &mut bool,
+    ) {
+        let _ = (key, text, pressed, claimed);
+    }
+    /// The wheel turned `steps` (positive up) with the cursor at `at` on a container screen: set `claimed` when the
+    /// mod scrolled something of its own. API 87.
+    pub(super) fn native_container_wheel(&mut self, at: [f32; 2], steps: f32, claimed: &mut bool) {
+        let _ = (at, steps, claimed);
     }
     /// The tooltip at `at` (as in `native_screen_click`) on block `block`'s
     /// screen, a mod's, over no item: push its lines when it is over
@@ -2527,6 +2562,14 @@ impl Game<'_> {
     /// Where the mouse is, in GUI pixels. API 20.
     pub(super) fn native_cursor(&self) -> [f32; 2] {
         [self.cursor.0, self.cursor.1]
+    }
+    /// The stack in the container slot under the cursor, if any (a recipe viewer's "show recipes of the hovered
+    /// item"). Container screens only. API 87.
+    pub(super) fn native_hovered_stack(&mut self) -> Option<ItemStack> {
+        let r = self.renderer.as_ref()?;
+        let batch = HudBatch::new([r.config.width, r.config.height]);
+        let slot = self.slot_at(&batch, self.cursor.0, self.cursor.1)?;
+        self.slot_view(slot)
     }
     /// Whether the left mouse button is down: a window of the mod's own follows the
     /// cursor while it is (`native_screen_click` sees the press only). API 35.
