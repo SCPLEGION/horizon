@@ -1566,7 +1566,7 @@ impl Game<'_> {
         )
     }
 
-    fn build_stack_tooltip_lines(
+    pub(in crate::game) fn build_stack_tooltip_lines(
         &self,
         stack: &ItemStack,
         nested: bool,

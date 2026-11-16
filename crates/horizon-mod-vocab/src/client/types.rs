@@ -735,6 +735,49 @@ pub struct SignEditView {
     pub front: bool,
 }
 
+/// One stack of the creative inventory, with what a recipe viewer lists it by
+/// (`ClientHost::creative_inventory_stacks`).
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal; mods only read it
+#[derive(horizon_mod_api_macros::Wire)]
+pub struct CreativeStack {
+    /// The stack, with its components (a potion's contents, a book's enchantments).
+    pub stack: ItemStack,
+    /// The titles, in the player's language, of the creative tabs that show it.
+    pub tabs: Vec<String>,
+    /// `ItemStack.getHoverName()` as plain text.
+    pub name: String,
+    /// The tooltip lines after the name, as plain text, for searching.
+    pub tooltip: Vec<String>,
+}
+
+/// One anvil recipe (`ClientHost::anvil_recipes`): a left input, and for each right input the
+/// result and the level cost `AnvilMenu.createResult` gives.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal; mods only read it
+#[derive(horizon_mod_api_macros::Wire)]
+pub struct AnvilRecipe {
+    /// The left input stacks (one, as a repairable item or an item an enchantment takes).
+    pub left: Vec<ItemStack>,
+    /// The right inputs: a repair material, or an enchanted book of one level.
+    pub right: Vec<ItemStack>,
+    /// The result for `right[i]`.
+    pub results: Vec<ItemStack>,
+    /// The level cost for `right[i]`.
+    pub costs: Vec<i32>,
+}
+
+/// What an item burns for in a furnace (`ClientHost::item_fuel`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal; mods only read it
+#[derive(horizon_mod_api_macros::Wire)]
+pub struct FuelInfo {
+    /// Burn time in ticks (`FuelValues.burnDuration`).
+    pub ticks: i32,
+    /// The cooking speed multiplier the item's `cooking_fuel` gives (1 when it has none).
+    pub speed: f32,
+}
+
 // no wire: borrowed call-scoped view; transport uses owned snapshots rather than serializing references.
 /// The open screen, for the screen hooks (`screen_render_post`, the
 /// mouse ones `screen_mouse_button_pressed_pre`, `..._released_pre` and

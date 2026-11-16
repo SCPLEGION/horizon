@@ -161,6 +161,24 @@ pub trait ItemsClientHost {
     /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
     #[access(ClientSetup)]
     fn enchantment_supports(&self, id: &str, item: ItemKey) -> bool;
+    /// Side: client.
+    /// Every stack of the creative inventory, with the tabs that show it, in the creative
+    /// inventory's order, variants included (potions, enchanted books, tipped arrows). The
+    /// contents the game built when the creative inventory last opened, or the exported ones
+    /// before that.
+    #[access(WorldOnly)]
+    fn creative_inventory_stacks(&self) -> Vec<CreativeStack>;
+    /// Side: client.
+    /// The anvil recipes `AnvilMenu.createResult` gives: each repairable item with each material
+    /// that repairs it, and each item an enchantment takes with a book of each level. Computed on
+    /// each call (some thousand stacks): call it once and keep the answer.
+    #[access(WorldOnly)]
+    fn anvil_recipes(&self) -> Vec<AnvilRecipe>;
+    /// Side: client.
+    /// What `item` burns for: its `cooking_fuel` burn time and speed, or with `fast` the
+    /// smoker's and blast furnace's (which burn twice as fast). None where it is no fuel.
+    #[access(WorldOnly)]
+    fn item_fuel(&self, item: ItemKey, fast: bool) -> Option<FuelInfo>;
 }
 /// The handles' reads of the `items` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
