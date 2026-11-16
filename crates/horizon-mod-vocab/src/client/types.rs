@@ -767,6 +767,38 @@ pub struct AnvilRecipe {
     pub costs: Vec<i32>,
 }
 
+/// One brewing recipe (`ClientHost::brewing_recipes`), as parallel lists: entry `i` brews
+/// `input[i]` with `ingredient[i]` into `output[i]`.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal; mods only read it
+#[derive(horizon_mod_api_macros::Wire)]
+pub struct BrewingRecipe {
+    /// The bottle stack put in a bottle slot, with its potion contents.
+    pub input: Vec<ItemStack>,
+    /// The reagent put in the ingredient slot.
+    pub ingredient: Vec<ItemStack>,
+    /// What the brew gives.
+    pub output: Vec<ItemStack>,
+}
+
+/// One grindstone recipe (`ClientHost::grindstone_recipes`): the stacks in the top and bottom
+/// slot (the bottom one empty where unused), the result and the experience range it drops.
+#[derive(Clone, Debug, PartialEq)]
+// exhaustive: the game builds it with a literal; mods only read it
+#[derive(horizon_mod_api_macros::Wire)]
+pub struct GrindstoneRecipe {
+    /// The stack in the top slot (one entry).
+    pub top: Vec<ItemStack>,
+    /// The stack in the bottom slot; empty when the slot stays empty.
+    pub bottom: Vec<ItemStack>,
+    /// The result (one entry).
+    pub output: Vec<ItemStack>,
+    /// The least experience the result drops.
+    pub xp_min: i32,
+    /// The most experience the result drops.
+    pub xp_max: i32,
+}
+
 /// What an item burns for in a furnace (`ClientHost::item_fuel`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 // exhaustive: the game builds it with a literal; mods only read it

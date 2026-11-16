@@ -51,6 +51,17 @@ pub trait ScreensClientHost {
     #[access(ClientSetup)]
     fn screen_hovered_stack(&self) -> Option<ItemStack>;
     /// Side: client.
+    /// The stack on the cursor of the open container screen (the menu's carried stack), with its
+    /// components; None with nothing carried.
+    #[access(ClientSetup)]
+    fn screen_carried_stack(&self) -> Option<ItemStack>;
+    /// Side: client.
+    /// Puts `stack` on the cursor of the open container screen (None empties it), as a
+    /// recipe viewer's give mode picks up an item. It sets the client's carried stack only:
+    /// whether the server agrees is up to the game mode (creative accepts it).
+    #[access(ClientSetup)]
+    fn set_screen_carried_stack(&mut self, stack: Option<ItemStack>);
+    /// Side: client.
     /// Requests vanilla's menu background blur for this frame, with a per-frame guard
     /// so blur is applied at most once per frame. Returns true if blur was newly
     /// requested this frame, or false if it was already applied/requested this frame.

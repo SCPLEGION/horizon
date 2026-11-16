@@ -179,6 +179,33 @@ pub trait ItemsClientHost {
     /// smoker's and blast furnace's (which burn twice as fast). None where it is no fuel.
     #[access(WorldOnly)]
     fn item_fuel(&self, item: ItemKey, fast: bool) -> Option<FuelInfo>;
+    /// Side: client.
+    /// The brewing recipes (`PotionBrewing`, the `minecraft:brewing` recipes of the data packs):
+    /// one entry per recipe, with the bottle, reagent and result of each concrete combination in
+    /// parallel lists. Computed on each call: call it once and keep the answer.
+    #[access(WorldOnly)]
+    fn brewing_recipes(&self) -> Vec<BrewingRecipe>;
+    /// Side: client.
+    /// The grindstone recipes (`GrindstoneMenu`): repairing two worn copies of an item, and
+    /// stripping the non-curse enchantments of each item and book, with the experience range.
+    /// Computed on each call: call it once and keep the answer.
+    #[access(WorldOnly)]
+    fn grindstone_recipes(&self) -> Vec<GrindstoneRecipe>;
+    /// Side: client.
+    /// The ids of the item tags `item` is in, without the `#` (`minecraft:logs`), sorted. Empty
+    /// for an item in none or no item.
+    #[access(WorldOnly)]
+    fn item_tags(&self, item: ItemKey) -> Vec<String>;
+    /// Side: client.
+    /// The ids of the fluid tags the fluid `fluid` (`minecraft:water`) is in, without the `#`,
+    /// sorted. Empty for a fluid in none or no fluid.
+    #[access(WorldOnly)]
+    fn fluid_tag_ids(&self, fluid: &str) -> Vec<String>;
+    /// Side: client.
+    /// The local player's inventory with its components: the 36 slots of hotbar and main
+    /// inventory in slot order (hotbar first), the empty ones left out, and no armor or offhand.
+    #[access(WorldOnly)]
+    fn local_player_inventory(&self) -> Vec<ItemStack>;
 }
 /// The handles' reads of the `items` area, implemented by the game and reached through [`Backend`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
