@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 90;
+pub(crate) const NATIVE_HOOKS_API: u32 = 91;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -627,6 +627,14 @@ pub(crate) struct NativeItem {
 pub(crate) struct NativeRecipes {
     pub(crate) items: Vec<NativeItem>,
     pub(crate) recipes: Vec<NativeRecipe>,
+}
+
+/// A stack the creative inventory lists (`native_creative_stacks`) and the tabs it is in, by their display names.
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct NativeCreativeStack {
+    pub(crate) stack: NativeStack,
+    pub(crate) tabs: Vec<String>,
 }
 
 /// An anvil recipe of [`native_anvil_recipes`]: the stack in the left slot, the material or book in the right slot
@@ -2854,6 +2862,34 @@ impl Game<'_> {
     pub(super) fn native_anvil_recipes(&mut self) -> Option<Arc<Vec<NativeAnvilRecipe>>> {
         self.player.as_ref()?;
         self.made_anvil_recipes()
+    }
+    /// Every stack the creative inventory's search tab lists (potions, tipped arrows, enchanted books and the other
+    /// variants of an item included, with their components in vanilla's item syntax) and the creative tabs each is
+    /// in: what a recipe viewer lists. In the creative inventory's order. API 91.
+    pub(super) fn native_creative_stacks(&self) -> Vec<NativeCreativeStack> {
+        use std::collections::HashMap;
+        let key = |s: &ItemStack| (s.item.to_string(), super::native_recipes::components(s));
+        let mut tabs_of: HashMap<(String, String), Vec<String>> = HashMap::new();
+        for tab in &self.creative_screen.tabs {
+            if tab.search || tab.inventory || tab.hotbar {
+                continue;
+            }
+            let title = self.translate(&tab.title, &tab.title);
+            for s in &tab.items {
+                tabs_of.entry(key(s)).or_default().push(title.clone());
+            }
+        }
+        self.creative_screen
+            .search_items()
+            .iter()
+            .map(|s| {
+                let k = key(s);
+                NativeCreativeStack {
+                    tabs: tabs_of.get(&k).cloned().unwrap_or_default(),
+                    stack: NativeStack { item: k.0, count: 1, components: k.1 },
+                }
+            })
+            .collect()
     }
     /// The `book_id`s of the recipes the player's recipe book holds now
     /// (the server's book on a server); empty outside a world.
