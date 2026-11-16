@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 89;
+pub(crate) const NATIVE_HOOKS_API: u32 = 90;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -627,6 +627,20 @@ pub(crate) struct NativeItem {
 pub(crate) struct NativeRecipes {
     pub(crate) items: Vec<NativeItem>,
     pub(crate) recipes: Vec<NativeRecipe>,
+}
+
+/// An anvil recipe of [`native_anvil_recipes`]: the stack in the left slot, the material or book in the right slot
+/// (items by their index in [`NativeRecipes::items`], with the components they have beyond the item's) and what the
+/// anvil makes of each, with its level cost.
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct NativeAnvilRecipe {
+    pub(crate) left: Vec<NativeRecipeStack>,
+    pub(crate) right: Vec<NativeRecipeStack>,
+    /// One result per `right` stack, in the same order.
+    pub(crate) results: Vec<NativeRecipeStack>,
+    /// The level cost of each result.
+    pub(crate) costs: Vec<i32>,
 }
 
 /// The mappings `native_mapping` answers for, with the key their default
@@ -2833,6 +2847,13 @@ impl Game<'_> {
     pub(super) fn native_recipes(&mut self) -> Option<Arc<NativeRecipes>> {
         self.player.as_ref()?;
         self.made_recipes()
+    }
+    /// The anvil's recipes, as the anvil itself works them out (`AnvilMenu.createResult`): each damageable item with
+    /// the materials that repair it, and each enchantable item with each enchantment's books. Made once; none outside a
+    /// world. Items index as in `native_recipes`. API 90.
+    pub(super) fn native_anvil_recipes(&mut self) -> Option<Arc<Vec<NativeAnvilRecipe>>> {
+        self.player.as_ref()?;
+        self.made_anvil_recipes()
     }
     /// The `book_id`s of the recipes the player's recipe book holds now
     /// (the server's book on a server); empty outside a world.

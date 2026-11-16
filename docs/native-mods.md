@@ -240,6 +240,8 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
+API 90 adds `native_anvil_recipes()`: the anvil's recipes as `AnvilMenu.createResult` works them out (each damageable item with the materials that repair it, each enchantable item with each enchantment's books; stacks index as in `native_recipes`, each result with its level cost), made once, none outside a world. Bundles that use it need `"hooks": 90`.
+
 API 89 adds `native_container_release(window, at, button, claimed)`: a mouse release on a container screen, before the game handles it, to end a drag a mod began in `native_container_click`. Bundles that use it need `"hooks": 89`.
 
 API 88 adds `native_draw_item_tooltip(batch, item, at)`: the game's own tooltip of an item, for a viewer that lists items (it is drawn on top of what was drawn before). Bundles that use it need `"hooks": 88`.

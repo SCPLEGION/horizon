@@ -25,6 +25,7 @@ use std::{collections::HashMap, sync::Arc};
 #[derive(Default)]
 pub(super) struct RecipeTables {
     tables: Option<Arc<Recipes>>,
+    anvil: Option<Arc<Vec<super::native_hooks::NativeAnvilRecipe>>>,
     known: (Option<u64>, Arc<[i32]>),
 }
 
@@ -318,5 +319,82 @@ impl Game<'_> {
             items: table,
             recipes: out,
         }
+    }
+}
+
+impl Game<'_> {
+    /// `native_anvil_recipes`, made once.
+    pub(super) fn made_anvil_recipes(&mut self) -> Option<Arc<Vec<super::native_hooks::NativeAnvilRecipe>>> {
+        use super::native_hooks::NativeAnvilRecipe as Anvil;
+        use horizon_client::items::ItemStack;
+        if let Some(done) = self.recipe_tables.anvil.clone() {
+            return Some(done);
+        }
+        let tables = self.made_recipes()?;
+        let index = Index(
+            tables
+                .items
+                .iter()
+                .enumerate()
+                .map(|(i, it)| (Arc::from(it.id.as_str()), i as u32))
+                .collect(),
+        );
+        let items = self.items();
+        let e = &self.stations().enchantments;
+        let mut out: Vec<Anvil> = Vec::new();
+        let stack_of = |s: &ItemStack| index.of(s);
+        for it in &tables.items {
+            let id = it.id.as_str();
+            let Some(info) = items.get(id) else { continue };
+            // Repairs: a fully damaged item and each material that repairs it.
+            if info.max_damage > 0 {
+                let mut left = ItemStack::new(id, 1);
+                left.damage = info.max_damage;
+                let mut recipe = Anvil::default();
+                for mat in &tables.items {
+                    let material = ItemStack::new(&mat.id, 1);
+                    if !horizon_client::stations::is_valid_repair_item(e, items, &left, &material) {
+                        continue;
+                    }
+                    let r = horizon_client::stations::anvil_result(e, items, Some(&left), Some(&material), None, "", true);
+                    if let (Some(res), Some(m)) = (r.result.as_ref().and_then(stack_of), stack_of(&material)) {
+                        recipe.right.push(m);
+                        recipe.results.push(res);
+                        recipe.costs.push(r.cost);
+                    }
+                }
+                if !recipe.right.is_empty() {
+                    recipe.left = stack_of(&left).into_iter().collect();
+                    out.push(recipe);
+                }
+            }
+            // Enchanting: a book of each level of each enchantment the item takes.
+            if e.enchantable(id) > 0 {
+                for ench in &e.list {
+                    if !e.can_enchant(items, &ench.id, id) {
+                        continue;
+                    }
+                    let left = ItemStack::new(id, 1);
+                    let mut recipe = Anvil::default();
+                    for level in 1..=ench.max_level {
+                        let mut book = ItemStack::new("minecraft:enchanted_book", 1);
+                        book.enchant(&ench.id, level);
+                        let r = horizon_client::stations::anvil_result(e, items, Some(&left), Some(&book), None, "", true);
+                        if let (Some(res), Some(b)) = (r.result.as_ref().and_then(stack_of), stack_of(&book)) {
+                            recipe.right.push(b);
+                            recipe.results.push(res);
+                            recipe.costs.push(r.cost);
+                        }
+                    }
+                    if !recipe.right.is_empty() {
+                        recipe.left = stack_of(&left).into_iter().collect();
+                        out.push(recipe);
+                    }
+                }
+            }
+        }
+        let done = Arc::new(out);
+        self.recipe_tables.anvil = Some(done.clone());
+        Some(done)
     }
 }
