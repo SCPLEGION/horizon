@@ -7,18 +7,20 @@
 //! the pick), so a frog that is not walking croaks in three of four idle
 //! picks: `Croak` takes those, and the frog's stroll then follows at once.
 use super::{
-    Mob, MobEvent, MobWorld, Species, Who,
+    DamageLevel, Mob, MobEvent, MobWorld, Species, Who,
     goals::{
-        Breed, Cx, Float, Goal, LOOK, LookAtPlayer, MOVE, Panic, RandomLookAround, Stroll, Tempt,
-        goal_clone,
+        AnimalPanic, Breed, Cx, Float, Goal, LOOK, LookAtPlayer, MOVE, RandomLookAround, Stroll,
+        Tempt, goal_clone,
     },
     sync,
 };
 use crate::blocks::Fluid;
 use horizon_core::{
     geometry::Vec3,
-    random::{LegacyRandom, RandomSource},
+    random::{LevelRandom, RandomSource},
 };
+use horizon_world::move_gate::MoveGate;
+use mod_api::SoundSource;
 use std::fmt::Debug;
 
 const JUMP: usize = 0;
@@ -94,6 +96,11 @@ pub struct State {
     pub discard_friction: bool,
 }
 
+/// The frog brain's attack target, while its tongue behavior is active.
+pub fn attack_target(m: &Mob) -> Option<Who> {
+    m.extra.frog.target.map(Who::Mob)
+}
+
 pub fn register(m: &mut Mob) {
     let food = m.kind.food.clone();
     // `Frog()`: SmoothSwimmingMoveControl(85, 10, 0.02, 0.1, true). The
@@ -107,9 +114,17 @@ pub fn register(m: &mut Mob) {
         outside: 0.1,
         gravity: true,
     };
+    // `Frog.FrogPathNavigation` (`AmphibiousPathNavigation`, and
+    // `prefersShallowSwimming` is the frog's own override): water deeper than
+    // ten blocks under sea level costs more, so a frog paths the shallows.
+    m.ai.nav.kind = super::nav::NavKind::Amphibious {
+        prefers_shallow: true,
+    };
     let g = &mut m.ai.goals;
     g.add(0, Float);
-    g.add(1, Panic::new(1.25));
+    // `FrogAi.initCoreActivity`: `AnimalPanic(2.0)` — the panic speed
+    // multiplier is 2.0, not the 1.25 its temptation uses.
+    g.add(1, AnimalPanic::new(2.0));
     // `FrogAi.initIdleActivity`: `AnimalMakeLove` first, then `FollowTemptation(1.25)`.
     g.add(2, Breed::new(1.0));
     g.add(3, Unless(is_pregnant, Tempt::new(1.25, food, false)));
@@ -155,6 +170,24 @@ pub fn tick(m: &mut Mob) {
     let age = m.age as f32;
     let still = m.fluids.in_water && m.limb_speed <= 1.0e-5;
     m.anim.states[SWIM_IDLE].animate_when(still, age);
+}
+/// `Frog.travelInWater`: `moveRelative(getSpeed(), input)`, the move, then
+/// the motion scaled by 0.9. `getSpeed` is the speed the move control stored.
+/// Out of water the usual travel runs.
+pub fn travel(
+    m: &mut Mob,
+    w: &MobWorld,
+    level: &mut DamageLevel<'_>,
+    input: Vec3,
+    events: &mut Vec<MobEvent>,
+) -> bool {
+    if !m.fluids.in_water {
+        return false;
+    }
+    m.move_relative(m.ai.speed, input);
+    m.do_move(w, level, events, &mut MoveGate::new());
+    m.velocity = m.velocity.scale(0.9);
+    true
 }
 
 /// `Frog.canEat`: a slime or magma cube of size 1.
@@ -379,10 +412,22 @@ impl LaySpawn {
             if open_top && supports && Self::is_air(cx.w, spawn) {
                 if let Some(state) = cx.w.registry.default_state("minecraft:frogspawn") {
                     cx.events.push(MobEvent::SetBlock { pos: spawn, state });
+                    cx.events.push(MobEvent::GameEvent {
+                        event: "minecraft:block_place",
+                        at: [
+                            f64::from(spawn[0]) + 0.5,
+                            f64::from(spawn[1]) + 0.5,
+                            f64::from(spawn[2]) + 0.5,
+                        ],
+                        source: m.id,
+                        state,
+                    });
                 }
-                cx.events.push(MobEvent::Sound(
+                // level.playSound(null, body, FROG_LAY_SPAWN, BLOCKS, 1, 1).
+                cx.events.push(MobEvent::bound_sound(
+                    m,
                     "entity.frog.lay_spawn",
-                    [m.position.x, m.position.y, m.position.z],
+                    SoundSource::Blocks,
                     1.0,
                     1.0,
                 ));
@@ -473,6 +518,30 @@ impl Goal for ShootTongue {
             m.extra.frog.nearest = None;
             return false;
         };
+        // `StartAttacking` selects ATTACK_TARGET before `ShootTongue`
+        // checks its path and `Frog.canEat`. A redirected target must pass
+        // those same checks; players and other prey cannot be eaten.
+        // A frog can never accept a player. Hide the mutable player
+        // selection from this proposal so a rejected player redirect cannot
+        // change who the remainder of the mob tick sees.
+        let change = if cx.w.mob_hooks.is_none() {
+            super::TargetChange::Set(Some(Who::Mob(t.id)))
+        } else {
+            let mut target_world = cx.w.clone();
+            target_world.player = cx.w.selected_player().cloned();
+            target_world.player_identity = cx.w.selected_player_identity();
+            target_world.player_selection = None;
+            target_world.change_target(m, true, Some(Who::Mob(t.id)))
+        };
+        let super::TargetChange::Set(Some(Who::Mob(id))) = change else {
+            return false;
+        };
+        let Some(t) =
+            cx.w.seen(id)
+                .filter(|t| t.alive && can_eat(t.species, t.size))
+        else {
+            return false;
+        };
         // canPathfindToTarget: a path that ends at the target.
         let at = [t.position.x, t.position.y, t.position.z];
         let ends = m
@@ -517,6 +586,8 @@ impl Goal for ShootTongue {
     }
     fn stop(&mut self, m: &mut Mob, _cx: &mut Cx) {
         let f = &mut m.extra.frog;
+        // `ShootTongue.stop` erases brain memory directly, independently
+        // of `StartAttacking` / `StopAttackingIfTargetInvalid` hooks.
         f.target = None;
         f.tongue_target = None;
         f.phase = Phase::Done;
@@ -536,16 +607,22 @@ impl Goal for ShootTongue {
         m.look_at([t.position.x, t.eye_y, t.position.z]);
         m.extra.frog.tongue_target = Some(id);
         m.extra.frog.time += 1;
-        let here = [m.position.x, m.position.y, m.position.z];
         match m.extra.frog.phase {
             Phase::MoveToTarget => {
                 if pos.distance_squared(m.position) < EATING_DISTANCE * EATING_DISTANCE {
-                    cx.events
-                        .push(MobEvent::Sound("entity.frog.tongue", here, 2.0, 1.0));
+                    // level.playSound(null, body, tongueSound, NEUTRAL, 2, 1).
+                    cx.events.push(MobEvent::bound_sound(
+                        m,
+                        "entity.frog.tongue",
+                        SoundSource::Neutral,
+                        2.0,
+                        1.0,
+                    ));
                     set_pose(m, sync::USING_TONGUE);
-                    // The target is drawn in at 0.75 a tick.
+                    // `target.setDeltaMovement(vectorTo(frog).normalize().scale(0.75))`: the
+                    // target's own motion is replaced, and it is drawn in.
                     let pull = m.position.subtract(pos).normalize().scale(0.75);
-                    cx.events.push(MobEvent::Push {
+                    cx.events.push(MobEvent::SetVelocity {
                         target: Who::Mob(id),
                         velocity: [pull.x, pull.y, pull.z],
                     });
@@ -565,9 +642,16 @@ impl Goal for ShootTongue {
                 if f.eat_timer > 6 {
                     f.phase = Phase::EatAnimation;
                     // eatEntity.
-                    cx.events
-                        .push(MobEvent::Sound("entity.frog.eat", here, 2.0, 1.0));
+                    cx.events.push(MobEvent::bound_sound(
+                        m,
+                        "entity.frog.eat",
+                        SoundSource::Neutral,
+                        2.0,
+                        1.0,
+                    ));
                     super::ai::do_hurt_target(m, Who::Mob(id), cx);
+                    // `if (!target.isAlive()) target.remove(KILLED)`: no death animation.
+                    cx.events.push(MobEvent::RemoveKilled { target: id });
                 }
             }
             Phase::EatAnimation => {
@@ -594,14 +678,14 @@ pub(super) fn count_down_cooldown(m: &mut Mob) {
     }
 }
 /// `LONG_JUMP_COOLDOWN_TICKS`.
-fn jump_cooldown(m: &Mob) -> Option<i64> {
+pub(crate) fn jump_cooldown(m: &Mob) -> Option<i64> {
     m.extra
         .memories
         .iter()
         .find(|x| x.0 == LONG_JUMP_COOLDOWN)
         .map(|x| x.1)
 }
-fn set_jump_cooldown(m: &mut Mob, ticks: Option<i64>) {
+pub(crate) fn set_jump_cooldown(m: &mut Mob, ticks: Option<i64>) {
     let memories = &mut m.extra.memories;
     let at = memories.iter().position(|x| x.0 == LONG_JUMP_COOLDOWN);
     match (at, ticks) {
@@ -615,7 +699,7 @@ fn set_jump_cooldown(m: &mut Mob, ticks: Option<i64>) {
 }
 /// `TIME_BETWEEN_LONG_JUMPS.sample` from the level's random, divided as the
 /// caller asks.
-fn sample_cooldown(m: &mut Mob, lr: &mut LegacyRandom, div: i32) {
+fn sample_cooldown(m: &mut Mob, lr: &mut LevelRandom, div: i32) {
     let (lo, hi) = if m.species() == Species::Goat {
         GOAT_TIME_BETWEEN_LONG_JUMPS
     } else {
@@ -708,7 +792,7 @@ pub(super) struct LongJump {
 impl LongJump {
     /// `WeightedRandom.getRandomItem` with the level's random over the
     /// candidates, removed once drawn.
-    fn draw(&mut self, lr: &mut LegacyRandom) -> Option<Candidate> {
+    fn draw(&mut self, lr: &mut LevelRandom) -> Option<Candidate> {
         let total: i32 = self.candidates.iter().map(|c| c.1).sum();
         if total == 0 {
             return None;
@@ -722,7 +806,7 @@ impl LongJump {
     }
     /// `LongJumpToPreferredBlock.getJumpCandidate`: while it wants them, the
     /// first drawn spot over a preferred block, else the first one passed over.
-    fn candidate(&mut self, w: &MobWorld, lr: &mut LegacyRandom) -> Option<Candidate> {
+    fn candidate(&mut self, w: &MobWorld, lr: &mut LevelRandom) -> Option<Candidate> {
         if !self.wanting_preferred {
             return self.draw(lr);
         }
@@ -739,7 +823,7 @@ impl LongJump {
     }
     /// `LongJumpToRandomPos.pickCandidate`: the first acceptable spot it can
     /// reach in an arc but not by an 8 block path.
-    fn pick(&mut self, m: &mut Mob, w: &MobWorld, lr: &mut LegacyRandom) {
+    fn pick(&mut self, m: &mut Mob, w: &MobWorld, lr: &mut LevelRandom) {
         while !self.candidates.is_empty() {
             let Some((target, _)) = self.candidate(w, lr) else {
                 continue;
@@ -782,16 +866,21 @@ impl LongJump {
                 // multiply(0.1F, 1.0, 0.1F): the float widened.
                 let slow = f64::from(0.1_f32);
                 m.velocity = m.velocity.multiply(Vec3::new(slow, 1.0, slow));
-                let at = [m.position.x, m.position.y, m.position.z];
                 let landing = if m.species() == Species::Goat {
                     "entity.goat.step"
                 } else {
                     "entity.frog.step"
                 };
-                cx.events.push(MobEvent::Sound(landing, at, 2.0, 1.0));
+                cx.events.push(MobEvent::bound_sound(
+                    m,
+                    landing,
+                    mod_api::SoundSource::Neutral,
+                    2.0,
+                    1.0,
+                ));
             }
             set_jump_pose(m, cx.w, sync::STANDING);
-            sample_cooldown(m, cx.lr, 1);
+            sample_cooldown(m, cx.level.random(), 1);
         }
         set_discard_friction(m, false);
         *self = Self::default();
@@ -816,7 +905,7 @@ fn candidates([x, y, z]: [i32; 3], width: i32, height: i32) -> Vec<Candidate> {
 /// first arc that reaches the target clear of blocks. `Collections.shuffle`
 /// without a random draws from an unseeded one, not the mob's or the level's.
 fn optimal_jump_vector(m: &Mob, w: &MobWorld, target: Vec3) -> Option<Vec3> {
-    let mut random = crate::sound_engine::SoundEngine::unseeded();
+    let mut random = crate::random_source::create();
     let mut angles = ALLOWED_ANGLES;
     for i in (2..=angles.len()).rev() {
         let j = random.next_int_bound(i as i32).unwrap_or(0) as usize;
@@ -868,7 +957,7 @@ impl Goal for LongJump {
             && !m.fluids.in_lava
             && cx.w.block_name(x, y, z) != "minecraft:honey_block";
         if !can {
-            sample_cooldown(m, cx.lr, 2);
+            sample_cooldown(m, cx.level.random(), 2);
         }
         can
     }
@@ -919,7 +1008,7 @@ impl Goal for LongJump {
             && !m.fluids.in_water
             && !(self.chosen.is_none() && self.candidates.is_empty());
         if !valid {
-            sample_cooldown(m, cx.lr, 2);
+            sample_cooldown(m, cx.level.random(), 2);
         }
         valid
     }
@@ -932,7 +1021,7 @@ impl Goal for LongJump {
         }
         let Some(jump) = self.chosen else {
             self.tries -= 1;
-            self.pick(m, cx.w, cx.lr);
+            self.pick(m, cx.w, cx.level.random());
             return;
         };
         m.look_at(self.look);
@@ -949,12 +1038,13 @@ impl Goal for LongJump {
             .extra
             .effects
             .iter()
-            .find(|e| e.0 == "minecraft:jump_boost")
-            .map_or(0.0, |e| f64::from(0.1_f32 * (e.2 + 1) as f32));
+            .find(|e| e.id == "minecraft:jump_boost")
+            .map_or(0.0, |e| f64::from(0.1_f32 * (e.amplifier + 1) as f32));
         m.velocity = jump.scale((len + boost) / len);
         self.mid_jump = true;
-        let at = [m.position.x, m.position.y, m.position.z];
-        cx.events.push(MobEvent::Sound(jump_sound(m), at, 1.0, 1.0));
+        // level.playSound(null, body, getJumpSound(body), NEUTRAL, 1, 1).
+        let sound = MobEvent::bound_sound(m, jump_sound(m), SoundSource::Neutral, 1.0, 1.0);
+        cx.events.push(sound);
     }
 }
 
@@ -969,6 +1059,186 @@ mod tests {
         k.id = "minecraft:frog".into();
         k.species = Species::Frog;
         Mob::new(1, kind, Vec3::new(0.5, 0.0, 0.5), 0.0)
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn tongue_acquisition_honors_brain_hooks_and_edible_redirects() {
+        use crate::mobs::{MobHooks, PlayerView, TargetChange};
+        use std::cell::Cell;
+        struct Hook(TargetChange, Cell<usize>);
+        impl MobHooks for Hook {
+            fn enderman_anger_suppressed(&self, _: u32, _: &PlayerView) -> bool {
+                false
+            }
+            fn can_grief(&self, _: u32, rule: bool) -> bool {
+                rule
+            }
+            fn grief_hooked(&self) -> bool {
+                false
+            }
+            fn living_visibility(&self, _: &PlayerView, _: u32, v: f64) -> f64 {
+                v
+            }
+            fn living_change_target(
+                &self,
+                _: &mut Mob,
+                world: &MobWorld<'_>,
+                brain: bool,
+                proposed: Option<Who>,
+            ) -> TargetChange {
+                assert!(brain);
+                assert_eq!(proposed, Some(Who::Mob(2)));
+                self.1.set(self.1.get() + 1);
+                // Mirror the native host selecting a redirected player.
+                if self.0 == TargetChange::Set(Some(Who::Player))
+                    && let Some(selection) = world.player_selection
+                {
+                    assert!(selection.select(100));
+                }
+                assert_eq!(world.selected_player_identity().map(|p| p.1), Some(99));
+                self.0
+            }
+        }
+        let mut others = Vec::new();
+        assert!(crate::mobs::world::with_test_world(&[], |_, types| {
+            for (id, name, size) in [
+                (2, "slime", 1),
+                (3, "magma_cube", 1),
+                (4, "slime", 2),
+                (5, "zombie", 1),
+            ] {
+                let kind = std::sync::Arc::new(types.types[&format!("minecraft:{name}")].clone());
+                let mut seen = Mob::new(id, kind, Vec3::new(1.5, 64.0, 0.5), 0.0)
+                    .seen(None, &crate::items::Items::empty());
+                seen.size = size;
+                others.push(seen);
+            }
+        }));
+        assert!(crate::mobs::world::with_built_test_world(
+            &others,
+            |world, registry| {
+                for x in -1..=0 {
+                    for z in -1..=0 {
+                        world.chunks.insert(
+                            (x, z),
+                            std::sync::Arc::new(crate::chunk::Chunk::empty(x, z)),
+                        );
+                    }
+                }
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                for x in -4..=4 {
+                    for z in -4..=4 {
+                        world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+            },
+            |world, types| {
+                for (with_hook, outcome, expected) in [
+                    (false, TargetChange::Keep, Some(2)),
+                    (true, TargetChange::Keep, None),
+                    (true, TargetChange::Set(None), None),
+                    (true, TargetChange::Set(Some(Who::Mob(2))), Some(2)),
+                    (true, TargetChange::Set(Some(Who::Mob(3))), Some(3)),
+                    (true, TargetChange::Set(Some(Who::Mob(4))), None),
+                    (true, TargetChange::Set(Some(Who::Mob(5))), None),
+                    (true, TargetChange::Set(Some(Who::Mob(999))), None),
+                    (true, TargetChange::Set(Some(Who::Player)), None),
+                ] {
+                    let hook = Hook(outcome, Cell::new(0));
+                    let selection = crate::mobs::player_selection::PlayerSelection::new(
+                        [99, 100]
+                            .into_iter()
+                            .map(|entity_id| crate::mobs::player_selection::TickPlayer {
+                                entity_id,
+                                connection: Some(entity_id),
+                                view: crate::mobs::world::test_player(Vec3::new(3.5, 64.0, 0.5)),
+                            })
+                            .collect(),
+                        Some(99),
+                    )
+                    .unwrap();
+                    let mut world = world.clone();
+                    world.player_selection = Some(&selection);
+                    world.mob_hooks = with_hook.then_some(&hook as &dyn MobHooks);
+                    let kind = std::sync::Arc::new(types.types["minecraft:frog"].clone());
+                    let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+                    register(&mut m);
+                    m.on_ground = true;
+                    m.extra.frog.nearest = Some(2);
+                    let mut events = Vec::new();
+                    let mut fixture = crate::health::TestLevel::new(0);
+                    let mut cx = Cx {
+                        w: &world,
+                        level: &mut fixture.level(),
+                        events: &mut events,
+                    };
+                    assert_eq!(
+                        ShootTongue.can_use(&mut m, &mut cx),
+                        expected.is_some(),
+                        "{outcome:?}"
+                    );
+                    assert_eq!(attack_target(&m), expected.map(Who::Mob));
+                    assert_eq!(hook.1.get(), usize::from(with_hook));
+                    assert_eq!(selection.selected().unwrap().entity_id, 99);
+                    assert!(!selection.has_switched());
+                    if expected.is_some() {
+                        ShootTongue.start(&mut m, &mut cx);
+                        assert_eq!(m.extra.frog.tongue_target, expected);
+                        ShootTongue.stop(&mut m, &mut cx);
+                        assert_eq!(attack_target(&m), None);
+                        assert_eq!(m.extra.frog.tongue_target, None);
+                        assert_eq!(
+                            hook.1.get(),
+                            usize::from(with_hook),
+                            "ShootTongue.stop erases memory directly"
+                        );
+                    }
+                }
+            }
+        ));
+    }
+
+    /// `Frog.travelInWater`: the move uses `getSpeed` (the speed the move
+    /// control stored, here 0.25, not the movement attribute 1.0 and not the
+    /// turtle's 0.1), then the whole motion is scaled by 0.9. Out of water
+    /// this path does not run.
+    #[test]
+    #[ignore = "daily"]
+    fn water_travel_uses_get_speed_and_scales_by_nine_tenths() {
+        let ran = crate::mobs::world::with_test_world(&[], |w, _| {
+            let mut m = frog();
+            m.attrs.speed = 1.0;
+            m.ai.speed = 0.25;
+            m.yaw = 0.0;
+            m.velocity = Vec3::new(1.0, -0.5, 0.125);
+            let kept = m.velocity;
+            let mut test_level = crate::health::TestLevel::new(0);
+            assert!(!travel(
+                &mut m,
+                w,
+                &mut test_level.level(),
+                Vec3::new(0.0, 0.0, 1.0),
+                &mut Vec::new()
+            ));
+            assert_eq!(m.velocity, kept);
+
+            m.fluids.in_water = true;
+            m.position = Vec3::new(0.5, 80.0, 0.5);
+            m.travel(
+                w,
+                &mut test_level.level(),
+                Vec3::new(0.0, 0.0, 1.0),
+                &mut Vec::new(),
+            );
+            // (1, -0.5, 0.125) + (0, 0, getSpeed 0.25) = (1, -0.5, 0.375),
+            // then * 0.9 = (0.9, -0.45, 0.3375).
+            assert!((m.velocity.x - 0.9).abs() < 1.0e-9, "{}", m.velocity.x);
+            assert!((m.velocity.y - -0.45).abs() < 1.0e-9, "{}", m.velocity.y);
+            assert!((m.velocity.z - 0.3375).abs() < 1.0e-9, "{}", m.velocity.z);
+        });
+        // Without a test world the closure does not run; there is nothing else to check.
+        assert!(ran, "vanilla data is missing");
     }
 
     /// `Frog.updateWalkAnimation`: target `min(distance * 25, 1)`, 0 while
@@ -1019,7 +1289,7 @@ mod tests {
             ..LongJump::default()
         };
         let mut r = LegacyRandom::new(7);
-        let mut lr = r.clone();
+        let mut lr = LevelRandom::for_level(r.clone());
         let pick = r.next_int_bound(14).unwrap();
         let want = if pick < 1 {
             0
@@ -1074,7 +1344,7 @@ mod tests {
     fn the_long_jump_cooldown_counts_down_and_is_erased() {
         let mut m = frog();
         let own = m.random.state();
-        sample_cooldown(&mut m, &mut LegacyRandom::new(3), 2);
+        sample_cooldown(&mut m, &mut crate::mobs::world::level_random(3), 2);
         let t = jump_cooldown(&m).unwrap();
         assert!((50..=70).contains(&t));
         assert_eq!(m.random.state(), own);
@@ -1084,5 +1354,162 @@ mod tests {
         set_jump_cooldown(&mut m, None);
         assert_eq!(jump_cooldown(&m), None);
         assert!(!m.extra.memories.iter().any(|x| x.0 == LONG_JUMP_COOLDOWN));
+    }
+
+    /// `FrogAi.initCoreActivity`: `AnimalPanic(2.0)`. A hurt frog starts the
+    /// panic goal with vanilla's 2.0 speed multiplier, which `PathNavigation`
+    /// stores for `SmoothSwimmingMoveControl` (`speedModifier * movement
+    /// speed`, so 0.2 on land and 0.04 in water). The brain's temptation and
+    /// long jump run at 1.25 and 1.0; 1.25 here would make a fleeing frog 60%
+    /// slower than vanilla's.
+    #[test]
+    #[ignore = "daily"]
+    fn a_hurt_frog_panics_at_vanillas_two_times_speed() {
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                for x in -2..=1 {
+                    for z in -2..=1 {
+                        world.chunks.insert(
+                            (x, z),
+                            std::sync::Arc::new(crate::chunk::Chunk::empty(x, z)),
+                        );
+                    }
+                }
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                for x in -8..=8 {
+                    for z in -8..=8 {
+                        world.set(x, 63, z, stone).unwrap();
+                    }
+                }
+            },
+            |w, types| {
+                let kind = std::sync::Arc::new(types.types["minecraft:frog"].clone());
+                let mut m = Mob::new(1, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+                register(&mut m);
+                m.on_ground = true;
+                // An environmental hit inside the 40 tick panic window
+                // (`DamageTypeTags.PANIC_CAUSES`).
+                m.last_damage = Some((
+                    super::super::Damage::of(super::super::DamageKind::Freeze),
+                    i64::from(m.age),
+                ));
+                let mut events = Vec::new();
+                let mut fixture = crate::health::TestLevel::new(0);
+                let mut cx = Cx {
+                    w,
+                    level: &mut fixture.level(),
+                    events: &mut events,
+                };
+                let mut goals = std::mem::take(&mut m.ai.goals);
+                // `AnimalPanic` looks for a spot every tick until
+                // `LandRandomPos` finds one; the walk target carries the
+                // speed multiplier.
+                for _ in 0..20 {
+                    goals.tick(&mut m, &mut cx);
+                    if m.ai.nav.speed_modifier == 2.0 {
+                        break;
+                    }
+                }
+                assert!(goals.is_running("Panic"), "the hurt frog should flee");
+                m.ai.goals = goals;
+                assert!(m.ai.panicking);
+                assert_eq!(m.ai.nav.speed_modifier, 2.0);
+            },
+        );
+        assert!(ran, "vanilla data is missing");
+    }
+
+    /// `Frog` keeps its pregnancy as the `IS_PREGNANT` brain memory, and
+    /// `Brain.Packed` saves every memory: `mob_to_nbt`/`mob_from_nbt` are the
+    /// pair `Game::mob_tree_nbt` and `Game::load_mob` go through. Horizon read
+    /// the memory back but wrote no `Brain` for a frog, so a frog made
+    /// pregnant in play that unloaded with its chunk came back unpregnant and
+    /// never laid its frogspawn.
+    #[test]
+    fn a_pregnant_frog_keeps_its_pregnancy_through_a_save() {
+        use crate::entity_nbt::{mob_from_nbt, mob_to_nbt};
+        use horizon_core::nbt::Tag;
+        let memory = |tag: &Tag| {
+            tag.get("Brain")
+                .and_then(|b| b.get("memories"))
+                .and_then(|b| b.get("minecraft:is_pregnant"))
+                .cloned()
+        };
+        let mut m = frog();
+        set_pregnant(&mut m, true);
+        let saved = mob_to_nbt(&m, [1, 2, 3, 4], None, None, |_| None);
+        assert_eq!(
+            memory(&saved),
+            Some(Tag::compound([(
+                "value",
+                Tag::Compound(Default::default())
+            )])),
+            "the save names the pregnancy"
+        );
+        let types = std::collections::HashMap::from([(m.kind.id.clone(), m.kind.clone())]);
+        let back = mob_from_nbt(&saved, &types, 2, None).unwrap();
+        assert!(is_pregnant(&back), "the reloaded frog is pregnant");
+        // A frog that laid its spawn saves no memory, even over a compound
+        // that still names one.
+        set_pregnant(&mut m, false);
+        let saved = mob_to_nbt(&m, [1, 2, 3, 4], Some(&saved), None, |_| None);
+        assert_eq!(memory(&saved), None, "a laid frog saves no pregnancy");
+        let back = mob_from_nbt(&saved, &types, 3, None).unwrap();
+        assert!(!is_pregnant(&back), "and does not come back pregnant");
+    }
+
+    /// `TryLaySpawnOnFluidNearLand`: the frogspawn is set, then
+    /// `block_place` is posted from the frog at the new block, then the lay
+    /// sound, and the pregnancy is erased.
+    #[test]
+    #[ignore = "daily"]
+    fn laying_frogspawn_posts_block_place_from_the_frog() {
+        let ran = crate::mobs::world::with_built_test_world(
+            &[],
+            |world, registry| {
+                world.chunks.insert(
+                    (0, 0),
+                    std::sync::Arc::new(crate::chunk::Chunk::empty(0, 0)),
+                );
+                let water = registry.default_state("minecraft:water").unwrap();
+                world.set(8, 63, 7, water).unwrap();
+            },
+            |w, _| {
+                let mut m = frog();
+                m.position = Vec3::new(8.5, 64.0, 8.5);
+                m.on_ground = true;
+                set_pregnant(&mut m, true);
+                let mut lr = crate::health::TestLevel::new(3);
+                let mut events = Vec::new();
+                let mut cx = Cx {
+                    w,
+                    level: &mut lr.level(),
+                    events: &mut events,
+                };
+                LaySpawn::lay(&mut m, &mut cx);
+                let spawn = w.registry.default_state("minecraft:frogspawn").unwrap();
+                assert!(
+                    events
+                        .iter()
+                        .any(|e| matches!(e, MobEvent::SetBlock { pos: [8, 64, 7], state } if *state == spawn)),
+                    "the frogspawn is set: {events:?}"
+                );
+                assert!(
+                    events.iter().any(|e| matches!(
+                        e,
+                        MobEvent::GameEvent {
+                            event: "minecraft:block_place",
+                            at: [8.5, 64.5, 7.5],
+                            source: 1,
+                            state,
+                        } if *state == spawn
+                    )),
+                    "the new frogspawn posts block_place from the frog: {events:?}"
+                );
+                assert!(!is_pregnant(&m), "laying erases the pregnancy");
+            },
+        );
+        assert!(ran, "vanilla data is missing");
     }
 }

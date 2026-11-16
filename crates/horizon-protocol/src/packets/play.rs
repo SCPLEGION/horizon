@@ -17,10 +17,21 @@ use crate::{
             Disconnect, KeepAlive, Ping, ResourcePackPop, ResourcePackPush, ResourcePackResponse,
             ServerLinks, StoreCookie, Transfer, UpdateTags,
         },
-        login::Property,
     },
 };
-use horizon_world::nbt::Tag;
+use horizon_core::nbt::Tag;
+
+mod advancements;
+mod commands;
+mod hud;
+mod player_info;
+pub use advancements::{Advancement, AdvancementDisplay, SeenAdvancements, UpdateAdvancements};
+pub use commands::{ARGUMENT_TYPES, ArgumentProperties, CommandNode, Commands};
+pub use hud::{
+    BossAction, BossEvent, NumberFormat, ResetScore, SetDisplayObjective, SetObjective,
+    SetPlayerTeam, SetScore, TeamParameters,
+};
+pub use player_info::{PlayerInfo, PlayerInfoRemove, PlayerInfoUpdate};
 
 // ---- shared structures -------------------------------------------------
 
@@ -72,9 +83,18 @@ packet!(AddEntity {
 });
 packet!(Animate { id: i32 => VarInt, action: u8 => UByte });
 packet!(BlockChangedAck { sequence: i32 => VarInt });
+packet!(
+    /// ClientboundSelectAdvancementsTabPacket: the advancement tab the server keeps for the
+    /// player, or none. `ClientPacketListener.handleSelectAdvancementsTab` opens the screen on
+    /// that tab, and closes it for none.
+    SelectAdvancementsTab { tab: Option<String> => Opt<Ident> }
+);
 packet!(BlockDestruction { id: i32 => VarInt, pos: [i32; 3] => Pos, progress: u8 => UByte });
 packet!(BlockEntityData { pos: [i32; 3] => Pos, kind: i32 => VarInt, tag: Tag => Nbt });
 packet!(BlockUpdate { pos: [i32; 3] => Pos, state: i32 => VarInt });
+// ClientboundAddTransientBlockPacket: a block the client shows for a moment
+// while its section mesh catches up (a falling block that landed).
+packet!(AddTransientBlock { pos: [i32; 3] => Pos, state: i32 => VarInt });
 packet!(ChangeDifficulty { difficulty: i32 => VarInt, locked: bool => Bool });
 // ResourceKey<GameRule<?>> is an identifier, followed by its string value.
 packet!(GameRuleEntry { name: String => Ident, value: String => Str });
@@ -230,7 +250,7 @@ impl Codec<i32> for HolderId {
     fn read(r: &mut Reader) -> Result<i32> {
         match r.varint()? {
             0 => Err(Error::new("inline registry values are not supported")),
-            id => Ok(id - 1),
+            id => Ok(id.wrapping_sub(1)),
         }
     }
     fn write(v: &i32, w: &mut Writer) {
@@ -249,7 +269,7 @@ impl Codec<DialogHolder> for DialogHolder {
     fn read(r: &mut Reader) -> Result<Self> {
         Ok(match r.varint()? {
             0 => Self::Direct(r.nbt()?),
-            id => Self::Registry(id - 1),
+            id => Self::Registry(id.wrapping_sub(1)),
         })
     }
     fn write(v: &Self, w: &mut Writer) {
@@ -458,7 +478,9 @@ impl VecDelta {
         let mut out = base;
         for i in 0..3 {
             if delta[i] != 0 {
-                out[i] = ((base[i] * 4096.0).round() as i64 + i64::from(delta[i])) as f64 / 4096.0;
+                out[i] = (horizon_core::jmath::round(base[i] * 4096.0) + i64::from(delta[i]))
+                    as f64
+                    / 4096.0;
             }
         }
         out
@@ -516,6 +538,11 @@ macro_rules! move_entity {
     ($name:ident, pos: $pos:expr, rot: $rot:expr) => {
         #[derive(Clone, Debug, PartialEq)]
         pub struct $name(pub MoveEntity);
+        impl crate::retained::OwnedHeap for $name {
+            fn owned_heap_bytes(&self) -> usize {
+                crate::retained::OwnedHeap::owned_heap_bytes(&self.0)
+            }
+        }
         impl Codec<$name> for $name {
             fn read(r: &mut Reader) -> Result<$name> {
                 Self::read_inner(r).map($name)
@@ -585,7 +612,7 @@ packet!(PlayerAbilities { flags: i8 => Byte, flying_speed: f32 => Float, walking
 pub struct PackedSignature;
 impl Codec<(i32, Option<Vec<u8>>)> for PackedSignature {
     fn read(r: &mut Reader) -> Result<(i32, Option<Vec<u8>>)> {
-        let id = r.varint()? - 1;
+        let id = r.varint()?.wrapping_sub(1);
         Ok(if id == -1 {
             (-1, Some(r.bytes(256)?.to_vec()))
         } else {
@@ -649,117 +676,6 @@ packet!(
     DeleteChat { signature: (i32, Option<Vec<u8>>) => PackedSignature }
 );
 packet!(PlayerCombatKill { id: i32 => VarInt, message: Tag => Nbt });
-packet!(PlayerInfoRemove { uuids: Vec<u128> => List<Uuid> });
-/// One ClientboundPlayerInfoUpdatePacket entry; fields are set for the
-/// actions in the packet.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct PlayerInfo {
-    pub uuid: u128,
-    pub name: Option<String>,
-    pub properties: Vec<Property>,
-    /// RemoteChatSession.Data: session id, key expiry, key, key signature.
-    pub chat_session: Option<(u128, i64, Vec<u8>, Vec<u8>)>,
-    pub game_mode: Option<i32>,
-    pub listed: Option<bool>,
-    pub latency: Option<i32>,
-    pub display_name: Option<Option<Tag>>,
-    pub list_order: Option<i32>,
-    pub show_hat: Option<bool>,
-}
-/// Actions bits: ADD_PLAYER, INITIALIZE_CHAT, UPDATE_GAME_MODE, UPDATE_LISTED,
-/// UPDATE_LATENCY, UPDATE_DISPLAY_NAME, UPDATE_LIST_ORDER, UPDATE_HAT.
-#[derive(Clone, Debug, PartialEq)]
-pub struct PlayerInfoUpdate {
-    pub actions: u8,
-    pub entries: Vec<PlayerInfo>,
-}
-impl Codec<PlayerInfoUpdate> for PlayerInfoUpdate {
-    fn read(r: &mut Reader) -> Result<Self> {
-        let actions = r.u8()?;
-        let n = r.count(r.remaining())?;
-        let mut entries = Vec::with_capacity(n.min(256));
-        for _ in 0..n {
-            let mut e = PlayerInfo {
-                uuid: r.uuid()?,
-                ..PlayerInfo::default()
-            };
-            if actions & 1 != 0 {
-                e.name = Some(r.string(16)?);
-                let count = r.count(16)?;
-                e.properties = (0..count)
-                    .map(|_| Property::read(r))
-                    .collect::<Result<_>>()?;
-            }
-            if actions & 2 != 0 && r.bool()? {
-                e.chat_session =
-                    Some((r.uuid()?, r.i64()?, r.byte_array(512)?, r.byte_array(4096)?));
-            }
-            if actions & 4 != 0 {
-                e.game_mode = Some(r.varint()?);
-            }
-            if actions & 8 != 0 {
-                e.listed = Some(r.bool()?);
-            }
-            if actions & 16 != 0 {
-                e.latency = Some(r.varint()?);
-            }
-            if actions & 32 != 0 {
-                e.display_name = Some(if r.bool()? { Some(r.nbt()?) } else { None });
-            }
-            if actions & 64 != 0 {
-                e.list_order = Some(r.varint()?);
-            }
-            if actions & 128 != 0 {
-                e.show_hat = Some(r.bool()?);
-            }
-            entries.push(e);
-        }
-        Ok(Self { actions, entries })
-    }
-    fn write(v: &Self, w: &mut Writer) {
-        w.u8(v.actions);
-        w.varint(v.entries.len() as i32);
-        for e in &v.entries {
-            w.uuid(e.uuid);
-            if v.actions & 1 != 0 {
-                w.string(e.name.as_deref().unwrap_or(""));
-                w.varint(e.properties.len() as i32);
-                e.properties.iter().for_each(|p| Property::write(p, w));
-            }
-            if v.actions & 2 != 0 {
-                w.bool(e.chat_session.is_some());
-                if let Some((id, expires, key, sig)) = &e.chat_session {
-                    w.uuid(*id);
-                    w.i64(*expires);
-                    w.byte_array(key);
-                    w.byte_array(sig);
-                }
-            }
-            if v.actions & 4 != 0 {
-                w.varint(e.game_mode.unwrap_or(0));
-            }
-            if v.actions & 8 != 0 {
-                w.bool(e.listed.unwrap_or(false));
-            }
-            if v.actions & 16 != 0 {
-                w.varint(e.latency.unwrap_or(0));
-            }
-            if v.actions & 32 != 0 {
-                let name = e.display_name.clone().flatten();
-                w.bool(name.is_some());
-                if let Some(t) = &name {
-                    w.nbt(t);
-                }
-            }
-            if v.actions & 64 != 0 {
-                w.varint(e.list_order.unwrap_or(0));
-            }
-            if v.actions & 128 != 0 {
-                w.bool(e.show_hat.unwrap_or(false));
-            }
-        }
-    }
-}
 packet!(PlayerPosition {
     teleport: i32 => VarInt,
     position: [f64; 3] => Vec3d,
@@ -785,6 +701,11 @@ packet!(
         target: [f64; 3] => Vec3d,
         entity: Option<LookAtEntity> => Opt<LookAtEntity>,
     }
+);
+packet!(
+    /// ClientboundPostEffectsPacket: the `post_effect` chains (ids) the player's
+    /// screen runs, in order (`ServerPlayer.postEffects`).
+    PostEffects { effects: Vec<String> => List<Ident> }
 );
 packet!(PlayerRotation { yaw: f32 => Float, relative_yaw: bool => Bool, pitch: f32 => Float, relative_pitch: bool => Bool });
 packet!(RemoveEntities { ids: Vec<i32> => List<VarInt> });
@@ -823,6 +744,24 @@ packet!(
     /// controls back where it was (PositionAndRotation: x, y, z, yRot, xRot).
     MoveVehicle { position: [f64; 3] => Vec3d, yaw: f32 => Float, pitch: f32 => Float }
 );
+packet!(
+    /// NewMinecartBehavior.MinecartStep: where a minecart is at the end of one
+    /// of the server's steps along the track, its motion, its rotation (yRot,
+    /// xRot) and the step's weight in the 3 ticks they are played over.
+    MinecartStep {
+        position: [f64; 3] => Vec3d,
+        movement: [f64; 3] => Vec3d,
+        yaw: i8 => Byte,
+        pitch: i8 => Byte,
+        weight: f32 => Float,
+    }
+);
+packet!(
+    /// ClientboundMoveMinecartPacket: the steps a minecart took along the
+    /// track since the last one (the `minecart_improvements` experiment sends
+    /// these in place of move packets).
+    MoveMinecartAlongTrack { id: i32 => VarInt, steps: Vec<MinecartStep> => List<MinecartStep> }
+);
 /// ClientboundSetEquipmentPacket: (EquipmentSlot ordinal, stack) pairs.
 pub struct Equipment;
 impl Codec<Vec<(u8, Option<Stack>)>> for Equipment {
@@ -855,6 +794,12 @@ packet!(
 packet!(SetPlayerInventory { slot: i32 => VarInt, item: Option<Stack> => Slot });
 packet!(
     /// ClockNetworkState for one world clock (registry id).
+    ///
+    /// `ClientboundSetTimePacket` keys its map by `Holder<WorldClock>`, but
+    /// `WorldClock.STREAM_CODEC` is `ByteBufCodecs.holderRegistry`, not
+    /// `holder`: the key is the plain registry id, with no inline form and no
+    /// off-by-one. The test below is a join packet captured from a vanilla
+    /// 26.3 server.
     ClockState { clock: i32 => VarInt, total_ticks: i64 => VarLong, partial_tick: f32 => Float, rate: f32 => Float }
 );
 packet!(SetTime { game_time: i64 => Long, clocks: Vec<ClockState> => List<ClockState> });
@@ -865,7 +810,7 @@ impl Codec<(i32, Option<(String, Option<f32>)>)> for SoundHolder {
     fn read(r: &mut Reader) -> Result<(i32, Option<(String, Option<f32>)>)> {
         let id = r.varint()?;
         if id != 0 {
-            return Ok((id - 1, None));
+            return Ok((crate::adapter::ids::sound_event(id.wrapping_sub(1)), None));
         }
         let location = r.string(32767)?;
         let range = if r.bool()? { Some(r.f32()?) } else { None };
@@ -944,98 +889,12 @@ packet!(
     /// ClientboundSetBorderWarningDistancePacket.
     SetBorderWarningDistance { blocks: i32 => VarInt }
 );
-packet!(
-    /// ClientboundSetDisplayObjectivePacket: `DisplaySlot` id (0 list,
-    /// 1 sidebar, 2 below name, 3.. team sidebars) and the objective ("" clears).
-    SetDisplayObjective { slot: i32 => VarInt, objective: String => Str }
-);
-packet!(
-    /// ClientboundResetScorePacket: one objective, or all of them when absent.
-    ResetScore { owner: String => Str, objective: Option<String> => Opt<Str> }
-);
-/// `NumberFormatTypes.STREAM_CODEC`, by `number_format_type` registry id.
-#[derive(Clone, Debug, PartialEq)]
-pub enum NumberFormat {
-    /// 0: `minecraft:blank`.
-    Blank,
-    /// 1: `minecraft:styled`, a style compound.
-    Styled(Tag),
-    /// 2: `minecraft:fixed`, a component.
-    Fixed(Tag),
-}
-impl Codec<NumberFormat> for NumberFormat {
-    fn read(r: &mut Reader) -> Result<Self> {
-        Ok(match r.varint()? {
-            0 => NumberFormat::Blank,
-            1 => NumberFormat::Styled(r.nbt()?),
-            2 => NumberFormat::Fixed(r.nbt()?),
-            other => return Err(crate::Error::new(format!("unknown number format {other}"))),
-        })
-    }
-    fn write(v: &Self, w: &mut Writer) {
-        match v {
-            NumberFormat::Blank => w.varint(0),
-            NumberFormat::Styled(t) => {
-                w.varint(1);
-                w.nbt(t);
-            }
-            NumberFormat::Fixed(t) => {
-                w.varint(2);
-                w.nbt(t);
-            }
-        }
-    }
-}
-packet!(
-    /// ClientboundSetScorePacket.
-    SetScore {
-        owner: String => Str,
-        objective: String => Str,
-        score: i32 => VarInt,
-        display: Option<Tag> => Opt<Nbt>,
-        number_format: Option<NumberFormat> => Opt<NumberFormat>,
-    }
-);
-/// ClientboundSetObjectivePacket: method 0 adds, 1 removes, 2 changes;
-/// adds and changes carry the display name, render type (0 integer,
-/// 1 hearts) and number format.
-#[derive(Clone, Debug, PartialEq)]
-pub struct SetObjective {
-    pub name: String,
-    pub method: i8,
-    pub display: Option<(Tag, i32, Option<NumberFormat>)>,
-}
-impl Codec<SetObjective> for SetObjective {
-    fn read(r: &mut Reader) -> Result<Self> {
-        let name = r.string(32767)?;
-        let method = r.i8()?;
-        let display = if method == 0 || method == 2 {
-            Some((r.nbt()?, r.varint()?, <Opt<NumberFormat>>::read(r)?))
-        } else {
-            None
-        };
-        Ok(Self {
-            name,
-            method,
-            display,
-        })
-    }
-    fn write(v: &Self, w: &mut Writer) {
-        w.string(&v.name);
-        w.i8(v.method);
-        if v.method == 0 || v.method == 2 {
-            let (name, render, format) = v.display.clone().unwrap_or((Tag::End, 0, None));
-            w.nbt(&name);
-            w.varint(render);
-            <Opt<NumberFormat>>::write(&format, w);
-        }
-    }
-}
 /// ClientboundLevelParticlesPacket: a particle, whether it ignores the
 /// client's particle setting (`overrideLimiter`) and its distance limit
 /// (`alwaysShow`), where, the spread and the speed on each axis, how many
 /// (0: one, moving by speed times spread) and the randomization type
-/// (0 default: gaussian spread and speed).
+/// (0 default: gaussian spread and speed; 1 ALTERNATIVE: nextDouble times
+/// spread, the packet's max speed as velocity).
 #[derive(Clone, Debug, PartialEq)]
 pub struct LevelParticles {
     pub particle: Particle,
@@ -1141,85 +1000,6 @@ impl Codec<Explode> for Explode {
         w.bool(v.play_sound);
     }
 }
-/// `ClientboundSetPlayerTeamPacket.Parameters`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct TeamParameters {
-    pub display_name: Tag,
-    pub prefix: Tag,
-    pub suffix: Tag,
-    /// `Team.Visibility` id.
-    pub name_tag_visibility: i32,
-    /// `Team.CollisionRule` id.
-    pub collision_rule: i32,
-    /// `TeamColor` id (0 black .. 15 white), absent for no colour.
-    pub color: Option<i32>,
-    /// 1: friendly fire, 2: see friendly invisibles.
-    pub options: i8,
-}
-/// ClientboundSetPlayerTeamPacket: method 0 adds (parameters and players),
-/// 1 removes, 2 changes (parameters), 3 joins and 4 leaves (players).
-#[derive(Clone, Debug, PartialEq)]
-pub struct SetPlayerTeam {
-    pub name: String,
-    pub method: i8,
-    pub parameters: Option<TeamParameters>,
-    pub players: Vec<String>,
-}
-impl Codec<SetPlayerTeam> for SetPlayerTeam {
-    fn read(r: &mut Reader) -> Result<Self> {
-        let name = r.string(32767)?;
-        let method = r.i8()?;
-        let parameters = if method == 0 || method == 2 {
-            Some(TeamParameters {
-                display_name: r.nbt()?,
-                prefix: r.nbt()?,
-                suffix: r.nbt()?,
-                name_tag_visibility: r.varint()?,
-                collision_rule: r.varint()?,
-                color: <Opt<VarInt>>::read(r)?,
-                options: r.i8()?,
-            })
-        } else {
-            None
-        };
-        let players = if matches!(method, 0 | 3 | 4) {
-            <List<Str>>::read(r)?
-        } else {
-            Vec::new()
-        };
-        Ok(Self {
-            name,
-            method,
-            parameters,
-            players,
-        })
-    }
-    fn write(v: &Self, w: &mut Writer) {
-        w.string(&v.name);
-        w.i8(v.method);
-        if v.method == 0 || v.method == 2 {
-            let p = v.parameters.clone().unwrap_or(TeamParameters {
-                display_name: Tag::End,
-                prefix: Tag::End,
-                suffix: Tag::End,
-                name_tag_visibility: 0,
-                collision_rule: 0,
-                color: None,
-                options: 0,
-            });
-            w.nbt(&p.display_name);
-            w.nbt(&p.prefix);
-            w.nbt(&p.suffix);
-            w.varint(p.name_tag_visibility);
-            w.varint(p.collision_rule);
-            <Opt<VarInt>>::write(&p.color, w);
-            w.i8(p.options);
-        }
-        if matches!(v.method, 0 | 3 | 4) {
-            <List<Str>>::write(&v.players, w);
-        }
-    }
-}
 packet!(ServerData { motd: Tag => Nbt, icon: Option<Vec<u8>> => Opt<crate::buf::Bytes> });
 packet!(
     /// ClientboundUpdateMobEffectPacket; flags: 1 ambient, 2 visible, 4 icon, 8 blend.
@@ -1293,445 +1073,6 @@ impl Codec<StopSound> for StopSound {
         }
     }
 }
-/// One entry of ClientboundCommandsPacket: a literal or an argument node.
-#[derive(Clone, Debug, PartialEq)]
-pub struct CommandNode {
-    /// 0 root, 1 literal, 2 argument.
-    pub kind: u8,
-    pub executable: bool,
-    pub restricted: bool,
-    pub children: Vec<i32>,
-    pub redirect: Option<i32>,
-    pub name: String,
-    /// Argument parser registry id and its raw property bytes.
-    pub parser: Option<(i32, Vec<u8>)>,
-    /// Custom suggestion provider (`minecraft:ask_server`).
-    pub suggestions: Option<String>,
-}
-/// The `minecraft:command_argument_type` registry of 26.3 in id order
-/// (ArgumentTypeInfos.bootstrap).
-pub const ARGUMENT_TYPES: &[&str] = &[
-    "brigadier:bool",
-    "brigadier:float",
-    "brigadier:double",
-    "brigadier:integer",
-    "brigadier:long",
-    "brigadier:string",
-    "minecraft:entity",
-    "minecraft:game_profile",
-    "minecraft:block_pos",
-    "minecraft:column_pos",
-    "minecraft:vec3",
-    "minecraft:vec2",
-    "minecraft:block_state",
-    "minecraft:block_predicate",
-    "minecraft:item_stack",
-    "minecraft:item_predicate",
-    "minecraft:team_color",
-    "minecraft:hex_color",
-    "minecraft:component",
-    "minecraft:style",
-    "minecraft:message",
-    "minecraft:nbt_compound_tag",
-    "minecraft:nbt_tag",
-    "minecraft:nbt_path",
-    "minecraft:objective",
-    "minecraft:objective_criteria",
-    "minecraft:operation",
-    "minecraft:particle",
-    "minecraft:angle",
-    "minecraft:rotation",
-    "minecraft:scoreboard_slot",
-    "minecraft:score_holder",
-    "minecraft:swizzle",
-    "minecraft:team",
-    "minecraft:item_slot",
-    "minecraft:item_slots",
-    "minecraft:resource_location",
-    "minecraft:function",
-    "minecraft:entity_anchor",
-    "minecraft:int_range",
-    "minecraft:float_range",
-    "minecraft:dimension",
-    "minecraft:gamemode",
-    "minecraft:time",
-    "minecraft:resource_or_tag",
-    "minecraft:resource_or_tag_key",
-    "minecraft:resource",
-    "minecraft:resource_key",
-    "minecraft:resource_selector",
-    "minecraft:template_mirror",
-    "minecraft:template_rotation",
-    "minecraft:heightmap",
-    "minecraft:loot_table",
-    "minecraft:loot_predicate",
-    "minecraft:loot_modifier",
-    "minecraft:context_float_provider",
-    "minecraft:context_int_provider",
-    "minecraft:slot_source",
-    "minecraft:dialog",
-    "minecraft:feature",
-    "minecraft:swing_animation",
-    "minecraft:uuid",
-];
-
-/// The properties of an argument parser (`ArgumentTypeInfo.Template`) as
-/// one of the 26.3 parsers decoded from the network.
-#[derive(Clone, Debug, PartialEq)]
-pub enum ArgumentProperties {
-    None,
-    Integer {
-        min: Option<i32>,
-        max: Option<i32>,
-    },
-    Long {
-        min: Option<i64>,
-        max: Option<i64>,
-    },
-    Float {
-        min: Option<f32>,
-        max: Option<f32>,
-    },
-    Double {
-        min: Option<f64>,
-        max: Option<f64>,
-    },
-    /// StringArgumentType.StringType: 0 word, 1 phrase, 2 greedy.
-    String(i32),
-    Entity {
-        single: bool,
-        players_only: bool,
-    },
-    ScoreHolder {
-        multiple: bool,
-    },
-    Time {
-        min: i32,
-    },
-    /// The resource arguments' registry.
-    Registry(String),
-}
-
-impl ArgumentProperties {
-    /// ArgumentTypeInfo.deserializeFromNetwork for parser `id`.
-    pub fn read(r: &mut Reader, id: i32) -> Result<Self> {
-        let name = usize::try_from(id)
-            .ok()
-            .and_then(|i| ARGUMENT_TYPES.get(i))
-            .ok_or_else(|| crate::Error::new(format!("unknown argument type {id}")))?;
-        let flagged = |r: &mut Reader| -> Result<(bool, bool)> {
-            let f = r.u8()?;
-            Ok((f & 1 != 0, f & 2 != 0))
-        };
-        Ok(match *name {
-            "brigadier:integer" => {
-                let (min, max) = flagged(r)?;
-                let min = if min { Some(r.i32()?) } else { None };
-                let max = if max { Some(r.i32()?) } else { None };
-                Self::Integer { min, max }
-            }
-            "brigadier:long" => {
-                let (min, max) = flagged(r)?;
-                let min = if min { Some(r.i64()?) } else { None };
-                let max = if max { Some(r.i64()?) } else { None };
-                Self::Long { min, max }
-            }
-            "brigadier:float" => {
-                let (min, max) = flagged(r)?;
-                let min = if min { Some(r.f32()?) } else { None };
-                let max = if max { Some(r.f32()?) } else { None };
-                Self::Float { min, max }
-            }
-            "brigadier:double" => {
-                let (min, max) = flagged(r)?;
-                let min = if min { Some(r.f64()?) } else { None };
-                let max = if max { Some(r.f64()?) } else { None };
-                Self::Double { min, max }
-            }
-            "brigadier:string" => Self::String(r.varint()?),
-            "minecraft:entity" => {
-                let f = r.u8()?;
-                Self::Entity {
-                    single: f & 1 != 0,
-                    players_only: f & 2 != 0,
-                }
-            }
-            "minecraft:score_holder" => Self::ScoreHolder {
-                multiple: r.u8()? & 1 != 0,
-            },
-            "minecraft:time" => Self::Time { min: r.i32()? },
-            "minecraft:resource"
-            | "minecraft:resource_key"
-            | "minecraft:resource_or_tag"
-            | "minecraft:resource_or_tag_key"
-            | "minecraft:resource_selector" => Self::Registry(r.string(32767)?),
-            _ => Self::None,
-        })
-    }
-    /// Decodes a node's raw `parser` bytes.
-    pub fn decode(id: i32, bytes: &[u8]) -> Result<Self> {
-        Self::read(&mut Reader::new(bytes), id)
-    }
-}
-
-/// Reads past an argument node's parser properties.
-fn read_argument_properties(r: &mut Reader, id: i32) -> Result<()> {
-    ArgumentProperties::read(r, id).map(|_| ())
-}
-
-/// The command tree: nodes and the index of the root.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Commands {
-    pub nodes: Vec<CommandNode>,
-    pub root: i32,
-}
-impl Codec<Commands> for Commands {
-    fn read(r: &mut Reader) -> Result<Self> {
-        let n = r.count(r.remaining())?;
-        let mut nodes = Vec::with_capacity(n.min(4096));
-        for _ in 0..n {
-            let flags = r.u8()?;
-            let count = r.count(r.remaining())?;
-            let children = (0..count).map(|_| r.varint()).collect::<Result<_>>()?;
-            let redirect = if flags & 8 != 0 {
-                Some(r.varint()?)
-            } else {
-                None
-            };
-            let kind = flags & 3;
-            let (mut name, mut parser, mut suggestions) = (String::new(), None, None);
-            if kind >= 1 {
-                name = r.string(32767)?;
-            }
-            if kind == 2 {
-                let id = r.varint()?;
-                let start = r.position();
-                read_argument_properties(r, id)?;
-                parser = Some((id, r.since(start).to_vec()));
-                if flags & 16 != 0 {
-                    suggestions = Some(r.string(32767)?);
-                }
-            }
-            nodes.push(CommandNode {
-                kind,
-                executable: flags & 4 != 0,
-                restricted: flags & 32 != 0,
-                children,
-                redirect,
-                name,
-                parser,
-                suggestions,
-            });
-        }
-        Ok(Self {
-            nodes,
-            root: r.varint()?,
-        })
-    }
-    fn write(v: &Self, w: &mut Writer) {
-        w.varint(v.nodes.len() as i32);
-        for n in &v.nodes {
-            let mut flags = n.kind & 3;
-            if n.executable {
-                flags |= 4;
-            }
-            if n.redirect.is_some() {
-                flags |= 8;
-            }
-            if n.suggestions.is_some() {
-                flags |= 16;
-            }
-            if n.restricted {
-                flags |= 32;
-            }
-            w.u8(flags);
-            w.varint(n.children.len() as i32);
-            n.children.iter().for_each(|c| w.varint(*c));
-            if let Some(r) = n.redirect {
-                w.varint(r);
-            }
-            if n.kind >= 1 {
-                w.string(&n.name);
-            }
-            if n.kind == 2 {
-                let (id, props) = n.parser.clone().unwrap_or((5, Vec::new()));
-                w.varint(id);
-                w.bytes(&props);
-                if let Some(s) = &n.suggestions {
-                    w.string(s);
-                }
-            }
-        }
-        w.varint(v.root);
-    }
-}
-
-/// `DisplayInfo` of an advancement as sent.
-#[derive(Clone, Debug, PartialEq)]
-pub struct AdvancementDisplay {
-    pub title: Tag,
-    pub description: Tag,
-    pub icon: crate::item::Stack,
-    /// `AdvancementType` ordinal: task, challenge, goal.
-    pub frame: i32,
-    pub show_toast: bool,
-    pub hidden: bool,
-    pub background: Option<String>,
-}
-/// `ClientboundUpdateAdvancementsPacket.PositionedAdvancement`.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Advancement {
-    pub id: String,
-    pub parent: Option<String>,
-    pub display: Option<AdvancementDisplay>,
-    pub requirements: Vec<Vec<String>>,
-    pub telemetry: bool,
-    pub x: f32,
-    pub y: f32,
-}
-/// `ClientboundUpdateAdvancementsPacket`: whether it replaces what the
-/// client has, the advancements added and removed, the progress of each
-/// changed one (criterion, when obtained in epoch milliseconds), and whether
-/// to show toasts.
-#[derive(Clone, Debug, PartialEq)]
-pub struct UpdateAdvancements {
-    pub reset: bool,
-    pub added: Vec<Advancement>,
-    pub removed: Vec<String>,
-    pub progress: Vec<(String, Vec<(String, Option<i64>)>)>,
-    pub show: bool,
-}
-impl Codec<UpdateAdvancements> for UpdateAdvancements {
-    fn read(r: &mut Reader) -> Result<Self> {
-        let reset = r.bool()?;
-        let n = r.count(r.remaining())?;
-        let mut added = Vec::with_capacity(n.min(1024));
-        for _ in 0..n {
-            let id = r.string(32767)?;
-            let parent = if r.bool()? {
-                Some(r.string(32767)?)
-            } else {
-                None
-            };
-            let display = if r.bool()? {
-                let title = r.nbt()?;
-                let description = r.nbt()?;
-                let icon = crate::item::Template::read(r)?;
-                let frame = r.varint()?;
-                let flags = r.i32()?;
-                let background = if flags & 1 != 0 {
-                    Some(r.string(32767)?)
-                } else {
-                    None
-                };
-                Some(AdvancementDisplay {
-                    title,
-                    description,
-                    icon,
-                    frame,
-                    show_toast: flags & 2 != 0,
-                    hidden: flags & 4 != 0,
-                    background,
-                })
-            } else {
-                None
-            };
-            let groups = r.count(r.remaining())?;
-            let mut requirements = Vec::with_capacity(groups.min(256));
-            for _ in 0..groups {
-                let k = r.count(r.remaining())?;
-                requirements.push((0..k).map(|_| r.string(32767)).collect::<Result<_>>()?);
-            }
-            let telemetry = r.bool()?;
-            let (x, y) = (r.f32()?, r.f32()?);
-            added.push(Advancement {
-                id,
-                parent,
-                display,
-                requirements,
-                telemetry,
-                x,
-                y,
-            });
-        }
-        let n = r.count(r.remaining())?;
-        let removed = (0..n).map(|_| r.string(32767)).collect::<Result<_>>()?;
-        let n = r.count(r.remaining())?;
-        let mut progress = Vec::with_capacity(n.min(1024));
-        for _ in 0..n {
-            let id = r.string(32767)?;
-            let k = r.count(r.remaining())?;
-            let mut criteria = Vec::with_capacity(k.min(256));
-            for _ in 0..k {
-                let name = r.string(32767)?;
-                let at = if r.bool()? { Some(r.i64()?) } else { None };
-                criteria.push((name, at));
-            }
-            progress.push((id, criteria));
-        }
-        let show = r.bool()?;
-        Ok(Self {
-            reset,
-            added,
-            removed,
-            progress,
-            show,
-        })
-    }
-    fn write(v: &Self, w: &mut Writer) {
-        w.bool(v.reset);
-        w.varint(v.added.len() as i32);
-        for a in &v.added {
-            w.string(&a.id);
-            w.bool(a.parent.is_some());
-            if let Some(p) = &a.parent {
-                w.string(p);
-            }
-            w.bool(a.display.is_some());
-            if let Some(d) = &a.display {
-                w.nbt(&d.title);
-                w.nbt(&d.description);
-                crate::item::Template::write(&d.icon, w);
-                w.varint(d.frame);
-                w.i32(
-                    i32::from(d.background.is_some())
-                        | i32::from(d.show_toast) << 1
-                        | i32::from(d.hidden) << 2,
-                );
-                if let Some(b) = &d.background {
-                    w.string(b);
-                }
-            }
-            w.varint(a.requirements.len() as i32);
-            for g in &a.requirements {
-                w.varint(g.len() as i32);
-                for c in g {
-                    w.string(c);
-                }
-            }
-            w.bool(a.telemetry);
-            w.f32(a.x);
-            w.f32(a.y);
-        }
-        w.varint(v.removed.len() as i32);
-        for id in &v.removed {
-            w.string(id);
-        }
-        w.varint(v.progress.len() as i32);
-        for (id, criteria) in &v.progress {
-            w.string(id);
-            w.varint(criteria.len() as i32);
-            for (name, at) in criteria {
-                w.string(name);
-                w.bool(at.is_some());
-                if let Some(at) = at {
-                    w.i64(*at);
-                }
-            }
-        }
-        w.bool(v.show);
-    }
-}
 packet!(
     /// ClientboundAwardStatsPacket: (stat type, value, count) by network id.
     AwardStats { stats: Vec<(i32, i32, i32)> => StatList }
@@ -1755,125 +1096,6 @@ impl Codec<Vec<(i32, i32, i32)>> for StatList {
     }
 }
 
-/// `ClientboundBossEventPacket` (`boss_event`).
-#[derive(Clone, Debug, PartialEq)]
-pub enum BossAction {
-    Add {
-        name: Tag,
-        progress: f32,
-        /// `BossBarColor` ordinal.
-        color: i32,
-        /// `BossBarOverlay` ordinal.
-        overlay: i32,
-        darken: bool,
-        music: bool,
-        fog: bool,
-    },
-    Remove,
-    UpdateProgress {
-        progress: f32,
-    },
-    UpdateName {
-        name: Tag,
-    },
-    UpdateStyle {
-        color: i32,
-        overlay: i32,
-    },
-    UpdateProperties {
-        darken: bool,
-        music: bool,
-        fog: bool,
-    },
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct BossEvent {
-    pub id: u128,
-    pub action: BossAction,
-}
-fn boss_flags(darken: bool, music: bool, fog: bool) -> u8 {
-    u8::from(darken) | (u8::from(music) << 1) | (u8::from(fog) << 2)
-}
-fn split_flags(flags: u8) -> (bool, bool, bool) {
-    (flags & 1 != 0, flags & 2 != 0, flags & 4 != 0)
-}
-impl Codec<BossEvent> for BossEvent {
-    fn read(r: &mut Reader) -> Result<BossEvent> {
-        let id = r.uuid()?;
-        let action = match r.varint()? {
-            0 => {
-                let name = r.nbt()?;
-                let progress = r.f32()?;
-                let color = r.varint()?;
-                let overlay = r.varint()?;
-                let (darken, music, fog) = split_flags(r.u8()?);
-                BossAction::Add {
-                    name,
-                    progress,
-                    color,
-                    overlay,
-                    darken,
-                    music,
-                    fog,
-                }
-            }
-            1 => BossAction::Remove,
-            2 => BossAction::UpdateProgress { progress: r.f32()? },
-            3 => BossAction::UpdateName { name: r.nbt()? },
-            4 => BossAction::UpdateStyle {
-                color: r.varint()?,
-                overlay: r.varint()?,
-            },
-            5 => {
-                let (darken, music, fog) = split_flags(r.u8()?);
-                BossAction::UpdateProperties { darken, music, fog }
-            }
-            op => return Err(Error::new(format!("unknown boss event operation {op}"))),
-        };
-        Ok(BossEvent { id, action })
-    }
-    fn write(v: &BossEvent, w: &mut Writer) {
-        w.uuid(v.id);
-        match &v.action {
-            BossAction::Add {
-                name,
-                progress,
-                color,
-                overlay,
-                darken,
-                music,
-                fog,
-            } => {
-                w.varint(0);
-                w.nbt(name);
-                w.f32(*progress);
-                w.varint(*color);
-                w.varint(*overlay);
-                w.u8(boss_flags(*darken, *music, *fog));
-            }
-            BossAction::Remove => w.varint(1),
-            BossAction::UpdateProgress { progress } => {
-                w.varint(2);
-                w.f32(*progress);
-            }
-            BossAction::UpdateName { name } => {
-                w.varint(3);
-                w.nbt(name);
-            }
-            BossAction::UpdateStyle { color, overlay } => {
-                w.varint(4);
-                w.varint(*color);
-                w.varint(*overlay);
-            }
-            BossAction::UpdateProperties { darken, music, fog } => {
-                w.varint(5);
-                w.u8(boss_flags(*darken, *music, *fog));
-            }
-        }
-    }
-}
-
 packet_enum!(Clientbound, crate::ids::play::clientbound {
     BundleDelimiter(Empty) = BUNDLE_DELIMITER,
     AddEntity(AddEntity) = ADD_ENTITY,
@@ -1889,7 +1111,9 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     ChunkBatchFinished(ChunkBatchFinished) = CHUNK_BATCH_FINISHED,
     ChunkBatchStart(Empty) = CHUNK_BATCH_START,
     ClearTitles(Bool1) = CLEAR_TITLES,
+    LowDiskSpaceWarning(Empty) = LOW_DISK_SPACE_WARNING,
     Commands(Commands) = COMMANDS,
+    UpdateRecipes(super::recipes::UpdateRecipes) = UPDATE_RECIPES,
     RecipeBookAdd(super::recipes::RecipeBookAdd) = RECIPE_BOOK_ADD,
     RecipeBookRemove(super::recipes::RecipeBookRemove) = RECIPE_BOOK_REMOVE,
     RecipeBookSettings(super::recipes::RecipeBookSettings) = RECIPE_BOOK_SETTINGS,
@@ -1901,7 +1125,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     CookieRequest(CookieRequest) = COOKIE_REQUEST,
     Cooldown(Cooldown) = COOLDOWN,
     CustomChatCompletions(CustomChatCompletions) = CUSTOM_CHAT_COMPLETIONS,
-    CustomPayload(CustomPayload) = CUSTOM_PAYLOAD,
+    CustomPayload(CustomPayload) = CUSTOM_PAYLOAD => super::custom_payload::ClientboundPlayPayload,
     Disconnect(Disconnect) = DISCONNECT,
     DeleteChat(DeleteChat) = DELETE_CHAT,
     DisguisedChat(DisguisedChat) = DISGUISED_CHAT,
@@ -1910,6 +1134,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     ChunksBiomes(ChunksBiomes) = CHUNKS_BIOMES,
     ForgetLevelChunk(ForgetLevelChunk) = FORGET_LEVEL_CHUNK,
     GameEvent(GameEvent) = GAME_EVENT,
+    GameTestHighlightPos(GameTestHighlightPos) = GAME_TEST_HIGHLIGHT_POS,
     GameRuleValues(GameRuleValues) = GAME_RULE_VALUES,
     HurtAnimation(HurtAnimation) = HURT_ANIMATION,
     DamageEvent(DamageEvent) = DAMAGE_EVENT,
@@ -1938,6 +1163,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     PlayerLookAt(PlayerLookAt) = PLAYER_LOOK_AT,
     PlayerPosition(PlayerPosition) = PLAYER_POSITION,
     PlayerRotation(PlayerRotation) = PLAYER_ROTATION,
+    PostEffects(PostEffects) = POST_EFFECTS,
     RemoveEntities(RemoveEntities) = REMOVE_ENTITIES,
     RemoveMobEffect(RemoveMobEffect) = REMOVE_MOB_EFFECT,
     ResetScore(ResetScore) = RESET_SCORE,
@@ -1969,6 +1195,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     SetObjective(SetObjective) = SET_OBJECTIVE,
     SetPassengers(SetPassengers) = SET_PASSENGERS,
     MoveVehicle(MoveVehicle) = MOVE_VEHICLE,
+    MoveMinecartAlongTrack(MoveMinecartAlongTrack) = MOVE_MINECART_ALONG_TRACK,
     ProjectilePower(ProjectilePower) = PROJECTILE_POWER,
     SetPlayerInventory(SetPlayerInventory) = SET_PLAYER_INVENTORY,
     SetPlayerTeam(SetPlayerTeam) = SET_PLAYER_TEAM,
@@ -1986,6 +1213,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     // A common packet: the same `configuration::ServerLinks` the
     // configuration phase sends.
     ServerLinks(ServerLinks) = SERVER_LINKS,
+    SelectAdvancementsTab(SelectAdvancementsTab) = SELECT_ADVANCEMENTS_TAB,
     SwingAnimation(SwingAnimation) = SWING_ANIMATION,
     SystemChat(SystemChat) = SYSTEM_CHAT,
     TabList(TabList) = TAB_LIST,
@@ -2000,6 +1228,7 @@ packet_enum!(Clientbound, crate::ids::play::clientbound {
     UpdateAttributes(UpdateAttributes) = UPDATE_ATTRIBUTES,
     LevelParticles(LevelParticles) = LEVEL_PARTICLES,
     Explode(Explode) = EXPLODE,
+    AddTransientBlock(AddTransientBlock) = ADD_TRANSIENT_BLOCK,
     UpdateMobEffect(UpdateMobEffect) = UPDATE_MOB_EFFECT,
     UpdateTags(UpdateTags) = UPDATE_TAGS,
     TrackedWaypoint(TrackedWaypoint) = WAYPOINT,
@@ -2298,6 +1527,11 @@ packet!(
     TestInstanceBlockAction { pos: [i32; 3] => Pos, action: i32 => VarInt, data: TestInstanceData => TestInstanceData }
 );
 packet!(
+    /// ClientboundGameTestHighlightPosPacket: the absolute position and the
+    /// position relative to the test's origin.
+    GameTestHighlightPos { absolute: [i32; 3] => Pos, relative: [i32; 3] => Pos }
+);
+packet!(
     /// ClientboundTestInstanceBlockStatus: the test's description and, for a
     /// query, the size of its structure.
     TestInstanceBlockStatus { status: Tag => Nbt, size: Option<[i32; 3]> => Opt<VarVec3i> }
@@ -2311,6 +1545,11 @@ packet!(
     /// mode (`CommandBlockEntity.Mode` ordinal) and the track output (1),
     /// conditional (2) and automatic (4) flags.
     SetCommandBlock { pos: [i32; 3] => Pos, command: String => Str, mode: i32 => VarInt, flags: i8 => Byte }
+);
+packet!(
+    /// ServerboundSetCommandMinecartPacket: the command minecart's entity id,
+    /// its command and whether it tracks output.
+    SetCommandMinecart { entity: i32 => VarInt, command: String => Str, track_output: bool => Bool }
 );
 /// ServerboundSetStructureBlockPacket: the structure block's edit screen.
 /// `update_type` and `mode` are `StructureBlockEntity.UpdateType` and
@@ -2547,6 +1786,7 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
     ChatSessionUpdate(ChatSessionUpdate) = CHAT_SESSION_UPDATE,
     PlaceRecipe(super::recipes::PlaceRecipe) = PLACE_RECIPE,
     RecipeBookChangeSettings(super::recipes::RecipeBookChangeSettings) = RECIPE_BOOK_CHANGE_SETTINGS,
+    RecipeBookSeenRecipe(super::recipes::RecipeBookSeenRecipe) = RECIPE_BOOK_SEEN_RECIPE,
     ChunkBatchReceived(ChunkBatchReceived) = CHUNK_BATCH_RECEIVED,
     ClientCommand(ClientCommand) = CLIENT_COMMAND,
     ClientInformation(ClientInformation) = CLIENT_INFORMATION,
@@ -2556,7 +1796,7 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
     ContainerClick(ContainerClick) = CONTAINER_CLICK,
     ContainerClose(ContainerClose) = CONTAINER_CLOSE,
     CookieResponse(CookieResponse) = COOKIE_RESPONSE,
-    CustomPayload(CustomPayload) = CUSTOM_PAYLOAD,
+    CustomPayload(CustomPayload) = CUSTOM_PAYLOAD => super::custom_payload::ServerboundPlayPayload,
     CustomClickAction(CustomClickAction) = CUSTOM_CLICK_ACTION,
     EditBook(EditBook) = EDIT_BOOK,
     Interact(Interact) = INTERACT,
@@ -2577,6 +1817,7 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
     PlayerLoaded(Empty) = PLAYER_LOADED,
     Pong(Ping) = PONG,
     RenameItem(RenameItem) = RENAME_ITEM,
+    SeenAdvancements(SeenAdvancements) = SEEN_ADVANCEMENTS,
     ContainerSlotStateChanged(ContainerSlotStateChanged) = CONTAINER_SLOT_STATE_CHANGED,
     Punch(Empty) = PUNCH,
     JigsawGenerate(JigsawGenerate) = JIGSAW_GENERATE,
@@ -2586,6 +1827,7 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
     SetBeacon(SetBeacon) = SET_BEACON,
     SetCarriedItem(SetCarriedItem) = SET_CARRIED_ITEM,
     SetCommandBlock(SetCommandBlock) = SET_COMMAND_BLOCK,
+    SetCommandMinecart(SetCommandMinecart) = SET_COMMAND_MINECART,
     SetCreativeModeSlot(SetCreativeModeSlot) = SET_CREATIVE_MODE_SLOT,
     SetJigsawBlock(SetJigsawBlock) = SET_JIGSAW_BLOCK,
     SetTestBlock(SetTestBlock) = SET_TEST_BLOCK,
@@ -2596,10 +1838,647 @@ packet_enum!(Serverbound, crate::ids::play::serverbound {
     UseItemOn(UseItemOn) = USE_ITEM_ON,
 });
 
+// Generated retained-allocation traversals; regenerate with protocol-retained-gen.
+impl crate::retained::OwnedHeap for NetCost {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            item,
+            count,
+            components,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(item))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(count))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(components))
+    }
+}
+impl crate::retained::OwnedHeap for NetOffer {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            cost_a,
+            result,
+            cost_b,
+            out_of_stock,
+            uses,
+            max_uses,
+            xp,
+            special_price,
+            price_multiplier,
+            demand,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(cost_a))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(result))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(cost_b))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(out_of_stock))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(uses))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(max_uses))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(xp))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(special_price))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(
+                price_multiplier,
+            ))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(demand))
+    }
+}
+impl crate::retained::OwnedHeap for Offers {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for HolderId {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for DialogHolder {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Registry(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::Direct(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+        }
+    }
+}
+impl crate::retained::OwnedHeap for PositionPath {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Linear(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::Stepped(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+        }
+    }
+}
+impl crate::retained::OwnedHeap for MapPatch {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            start_x,
+            start_y,
+            width,
+            height,
+            colors,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(start_x))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(start_y))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(width))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(height))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(colors))
+    }
+}
+impl crate::retained::OwnedHeap for MapPatchOpt {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for VecDelta {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Linear(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::Stepped(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+        }
+    }
+}
+impl crate::retained::OwnedHeap for MoveEntity {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            id,
+            delta,
+            rotation,
+            on_ground,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(id))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(delta))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(rotation))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(on_ground))
+    }
+}
+impl crate::retained::OwnedHeap for PackedSignature {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for Signature {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for FilterMask {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for PlayerInfo {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            uuid,
+            name,
+            properties,
+            chat_session,
+            game_mode,
+            listed,
+            latency,
+            display_name,
+            list_order,
+            show_hat,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(uuid))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(properties))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(chat_session))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(game_mode))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(listed))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(latency))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(display_name))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(list_order))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(show_hat))
+    }
+}
+impl crate::retained::OwnedHeap for PlayerInfoUpdate {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self { actions, entries } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(actions))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(entries))
+    }
+}
+impl crate::retained::OwnedHeap for Equipment {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for SoundHolder {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for NumberFormat {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Blank => 0usize,
+            Self::Styled(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::Fixed(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+        }
+    }
+}
+impl crate::retained::OwnedHeap for SetObjective {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            name,
+            method,
+            display,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(method))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(display))
+    }
+}
+impl crate::retained::OwnedHeap for LevelParticles {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            particle,
+            override_limiter,
+            always_show,
+            pos,
+            dist,
+            max_speed,
+            count,
+            randomization,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(particle))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(
+                override_limiter,
+            ))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(always_show))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(pos))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(dist))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(max_speed))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(count))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(randomization))
+    }
+}
+impl crate::retained::OwnedHeap for ExplosionParticle {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            particle,
+            scaling,
+            speed,
+            weight,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(particle))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(scaling))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(speed))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(weight))
+    }
+}
+impl crate::retained::OwnedHeap for Explode {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            center,
+            radius,
+            block_count,
+            knockback,
+            particle,
+            sound,
+            block_particles,
+            play_sound,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(center))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(radius))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(block_count))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(knockback))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(particle))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(sound))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(
+                block_particles,
+            ))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(play_sound))
+    }
+}
+impl crate::retained::OwnedHeap for TeamParameters {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            display_name,
+            prefix,
+            suffix,
+            name_tag_visibility,
+            collision_rule,
+            color,
+            options,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(display_name))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(prefix))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(suffix))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(
+                name_tag_visibility,
+            ))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(collision_rule))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(color))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(options))
+    }
+}
+impl crate::retained::OwnedHeap for SetPlayerTeam {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            name,
+            method,
+            parameters,
+            players,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(method))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(parameters))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(players))
+    }
+}
+impl crate::retained::OwnedHeap for StopSound {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self { source, sound } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(source))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(sound))
+    }
+}
+impl crate::retained::OwnedHeap for AdvancementDisplay {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            title,
+            description,
+            icon,
+            frame,
+            show_toast,
+            hidden,
+            background,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(title))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(description))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(icon))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(frame))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(show_toast))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(hidden))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(background))
+    }
+}
+impl crate::retained::OwnedHeap for Advancement {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            id,
+            parent,
+            display,
+            requirements,
+            telemetry,
+            x,
+            y,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(id))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(parent))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(display))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(requirements))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(telemetry))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(x))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(y))
+    }
+}
+impl crate::retained::OwnedHeap for UpdateAdvancements {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            reset,
+            added,
+            removed,
+            progress,
+            show,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(reset))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(added))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(removed))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(progress))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(show))
+    }
+}
+impl crate::retained::OwnedHeap for StatList {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for BossAction {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Add {
+                name,
+                progress,
+                color,
+                overlay,
+                darken,
+                music,
+                fog,
+            } => 0usize
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(progress))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(color))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(overlay))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(darken))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(music))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(fog)),
+            Self::Remove => 0usize,
+            Self::UpdateProgress { progress } => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(progress))
+            }
+            Self::UpdateName { name } => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+            }
+            Self::UpdateStyle { color, overlay } => 0usize
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(color))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(overlay)),
+            Self::UpdateProperties { darken, music, fog } => 0usize
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(darken))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(music))
+                .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(fog)),
+        }
+    }
+}
+impl crate::retained::OwnedHeap for BossEvent {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self { id, action } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(id))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(action))
+    }
+}
+impl crate::retained::OwnedHeap for WaypointId {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Uuid(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::Name(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+        }
+    }
+}
+impl crate::retained::OwnedHeap for WaypointTarget {
+    fn owned_heap_bytes(&self) -> usize {
+        match self {
+            Self::Empty => 0usize,
+            Self::Block(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::Chunk(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+            Self::Azimuth(field_0) => {
+                0usize.saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(field_0))
+            }
+        }
+    }
+}
+impl crate::retained::OwnedHeap for TrackedWaypoint {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            operation,
+            id,
+            style,
+            color,
+            target,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(operation))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(id))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(style))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(color))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(target))
+    }
+}
+impl crate::retained::OwnedHeap for Fixed3 {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for ArgumentSignatures {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for ChangedSlots {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for SeenAdvancements {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self { action, tab } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(action))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(tab))
+    }
+}
+impl crate::retained::OwnedHeap for SetStructureBlock {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self {
+            pos,
+            update_type,
+            mode,
+            name,
+            offset,
+            size,
+            mirror,
+            rotation,
+            data,
+            ignore_entities,
+            strict,
+            show_air,
+            show_bounding_box,
+            integrity,
+            seed,
+        } = self;
+        0usize
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(pos))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(update_type))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(mode))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(name))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(offset))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(size))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(mirror))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(rotation))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(data))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(
+                ignore_entities,
+            ))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(strict))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(show_air))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(
+                show_bounding_box,
+            ))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(integrity))
+            .saturating_add(crate::retained::OwnedHeap::owned_heap_bytes(seed))
+    }
+}
+impl crate::retained::OwnedHeap for BookPages {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for SignSide {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for SignLines {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+impl crate::retained::OwnedHeap for Cursor {
+    fn owned_heap_bytes(&self) -> usize {
+        let Self = self;
+        0usize
+    }
+}
+// End generated retained traversals.
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{chunk::BlockEntityInfo, packets::round_trip, text::literal};
+    use crate::{
+        chunk::BlockEntityInfo,
+        packets::{recipes::RecipeBookSeenRecipe, round_trip},
+        text::literal,
+    };
+
+    #[test]
+    fn a_command_tree_with_a_cycle_is_refused() {
+        let node = |kind: u8, name: &str, children: Vec<i32>, redirect: Option<i32>| CommandNode {
+            kind,
+            executable: false,
+            restricted: false,
+            children,
+            redirect,
+            name: name.into(),
+            parser: None,
+            suggestions: None,
+        };
+        let read = |nodes: Vec<CommandNode>| {
+            let mut w = Writer::new();
+            Commands::write(&Commands { nodes, root: 0 }, &mut w);
+            Commands::read(&mut Reader::new(&w.data))
+        };
+        // `execute` with `run` redirecting back to the root, as vanilla's tree has it.
+        let execute = vec![
+            node(0, "", vec![1], None),
+            node(1, "execute", vec![2], None),
+            node(1, "run", vec![], Some(0)),
+        ];
+        assert!(read(execute).is_ok());
+        // root -> a -> b -> a
+        let children = vec![
+            node(0, "", vec![1], None),
+            node(1, "a", vec![2], None),
+            node(1, "b", vec![1], None),
+        ];
+        assert!(read(children).is_err());
+        assert!(read(vec![node(0, "", vec![0], None)]).is_err());
+        // a redirects to b, b to a
+        let redirects = vec![
+            node(0, "", vec![1, 2], None),
+            node(1, "a", vec![], Some(2)),
+            node(1, "b", vec![], Some(1)),
+        ];
+        assert!(read(redirects).is_err());
+        // A long chain is fine and checked without recursing.
+        let mut chain: Vec<_> = (1..=100_000).map(|i| node(1, "x", vec![i], None)).collect();
+        chain[0].kind = 0;
+        chain.push(node(1, "x", vec![], None));
+        assert!(read(chain.clone()).is_ok());
+        chain.last_mut().unwrap().children.push(50_000);
+        assert!(read(chain).is_err());
+    }
+
+    #[test]
+    fn vec_delta_quantizes_the_base_like_math_round() {
+        // Math.round(-2.5) is -2, so a delta of 1 lands on -1/4096, not -2/4096.
+        let out = VecDelta::apply([-2.5 / 4096.0, 0.0, 0.0], [1, 0, 0]);
+        assert_eq!(out[0], -1.0 / 4096.0);
+    }
 
     #[test]
     fn merchant_cost_predicate_is_a_typed_list_without_patch_counts() {
@@ -2713,6 +2592,87 @@ mod tests {
         );
     }
 
+    /// ServerboundRecipeBookSeenRecipePacket is one `RecipeDisplayId`, a
+    /// VarInt: display 300 is the two bytes `AC 02`, and a byte list that
+    /// stops early is not a display id.
+    #[test]
+    fn a_seen_recipe_is_one_varint_display_id() {
+        let payload = [0xAC, 0x02];
+        let seen = Serverbound::RecipeBookSeenRecipe(RecipeBookSeenRecipe { recipe: 300 });
+        assert_eq!(
+            Serverbound::decode(
+                crate::ids::play::serverbound::RECIPE_BOOK_SEEN_RECIPE,
+                &payload
+            )
+            .unwrap(),
+            seen
+        );
+        assert_eq!(&seen.encode()[1..], payload);
+        assert!(
+            Serverbound::decode(
+                crate::ids::play::serverbound::RECIPE_BOOK_SEEN_RECIPE,
+                &payload[..1]
+            )
+            .is_err()
+        );
+    }
+
+    /// ServerboundSeenAdvancementsPacket: the action, then the tab only when the player opened
+    /// one — a closed screen is the action on its own.
+    #[test]
+    fn a_seen_advancements_packet_carries_its_tab_only_when_one_was_opened() {
+        let opened = SeenAdvancements {
+            action: 0,
+            tab: Some("minecraft:story/root".into()),
+        };
+        let mut w = crate::buf::Writer::new();
+        w.varint(0);
+        w.string("minecraft:story/root");
+        assert_eq!(
+            Serverbound::decode(crate::ids::play::serverbound::SEEN_ADVANCEMENTS, &w.data).unwrap(),
+            Serverbound::SeenAdvancements(opened.clone())
+        );
+        assert_eq!(
+            &Serverbound::SeenAdvancements(opened).encode()[1..],
+            &w.data[..]
+        );
+        // CLOSED_SCREEN: the action alone, with nothing after it.
+        let closed = [0x01];
+        assert_eq!(
+            Serverbound::decode(crate::ids::play::serverbound::SEEN_ADVANCEMENTS, &closed).unwrap(),
+            Serverbound::SeenAdvancements(SeenAdvancements {
+                action: 1,
+                tab: None,
+            })
+        );
+        // Both packets are typed now, so neither reads as an unknown opcode, and a packet too
+        // short for its tab is malformed rather than a tab-less open.
+        assert!(!matches!(
+            Serverbound::decode(crate::ids::play::serverbound::SEEN_ADVANCEMENTS, &closed).unwrap(),
+            Serverbound::Unknown(..)
+        ));
+        assert!(
+            Serverbound::decode(crate::ids::play::serverbound::SEEN_ADVANCEMENTS, &[0x00]).is_err()
+        );
+        let tab = Clientbound::SelectAdvancementsTab(SelectAdvancementsTab {
+            tab: Some("minecraft:story/root".into()),
+        });
+        assert_eq!(
+            Clientbound::decode(
+                crate::ids::play::clientbound::SELECT_ADVANCEMENTS_TAB,
+                &tab.encode()[1..]
+            )
+            .unwrap(),
+            tab
+        );
+        let none = Clientbound::SelectAdvancementsTab(SelectAdvancementsTab { tab: None });
+        assert_eq!(
+            &none.encode()[1..],
+            &[0x00],
+            "no tab is the absence flag alone"
+        );
+    }
+
     fn spawn() -> SpawnInfo {
         SpawnInfo {
             dimension_type: 0,
@@ -2771,6 +2731,7 @@ mod tests {
     fn clientbound_round_trips() {
         let packets = vec![
             Clientbound::BundleDelimiter(Empty),
+            Clientbound::LowDiskSpaceWarning(Empty),
             Clientbound::PongResponse(crate::packets::status::Ping { time: 1_234_567 }),
             Clientbound::SetBorderCenter(SetBorderCenter { x: 1.5, z: -2.0 }),
             Clientbound::SetBorderLerpSize(SetBorderLerpSize {
@@ -2841,6 +2802,10 @@ mod tests {
                 data: 0,
             }),
             Clientbound::BlockUpdate(BlockUpdate {
+                pos: [-5, -60, 7],
+                state: 1,
+            }),
+            Clientbound::AddTransientBlock(AddTransientBlock {
                 pos: [-5, -60, 7],
                 state: 1,
             }),
@@ -3385,7 +3350,7 @@ mod tests {
                 tag: Tag::End
             })
         );
-        let mut items = horizon_world::nbt::Compound::new();
+        let mut items = horizon_core::nbt::Compound::new();
         items.insert("Lock".into(), Tag::String("key".into()));
         round_trip(
             Clientbound::TagQuery(TagQuery {
@@ -3447,6 +3412,25 @@ mod tests {
                 Clientbound::PlayerLookAt(p)
             );
         }
+    }
+
+    #[test]
+    fn post_effects_round_trips() {
+        let p = PostEffects {
+            effects: vec!["minecraft:invert".into(), "pack:glow".into()],
+        };
+        let bytes = Clientbound::PostEffects(p.clone()).encode();
+        assert_eq!(
+            Clientbound::decode(crate::ids::play::clientbound::POST_EFFECTS, &bytes[1..]).unwrap(),
+            Clientbound::PostEffects(p)
+        );
+        // The empty list the server sends on join.
+        assert_eq!(
+            Clientbound::decode(crate::ids::play::clientbound::POST_EFFECTS, &[0]).unwrap(),
+            Clientbound::PostEffects(PostEffects {
+                effects: Vec::new()
+            })
+        );
     }
 
     /// ClientboundChunksBiomesPacket is read, not passed through as an
@@ -3700,6 +3684,27 @@ mod tests {
     }
 
     #[test]
+    fn set_command_minecart_writes_entity_command_then_track_output() {
+        let packet = SetCommandMinecart {
+            entity: 300,
+            command: "say hi".into(),
+            track_output: true,
+        };
+        round_trip(
+            Serverbound::SetCommandMinecart(packet.clone()),
+            Serverbound::encode,
+            Serverbound::decode,
+        );
+        // ServerboundSetCommandMinecartPacket.write: VarInt, UTF, boolean.
+        let mut w = Writer::new();
+        SetCommandMinecart::write(&packet, &mut w);
+        assert_eq!(
+            w.data,
+            [0xAC, 0x02, 6, b's', b'a', b'y', b' ', b'h', b'i', 1]
+        );
+    }
+
+    #[test]
     fn set_structure_block_round_trips_and_clamps_like_vanilla() {
         let packet = SetStructureBlock {
             pos: [-3, 70, 12],
@@ -3781,6 +3786,18 @@ mod tests {
     }
 
     #[test]
+    fn game_test_highlight_pos_round_trips() {
+        round_trip(
+            Clientbound::GameTestHighlightPos(GameTestHighlightPos {
+                absolute: [10, -64, 30],
+                relative: [1, 2, 3],
+            }),
+            Clientbound::encode,
+            Clientbound::decode,
+        );
+    }
+
+    #[test]
     fn set_test_block_round_trips() {
         round_trip(
             Serverbound::SetTestBlock(SetTestBlock {
@@ -3791,6 +3808,30 @@ mod tests {
             Serverbound::encode,
             Serverbound::decode,
         );
+    }
+
+    /// A `SetTime` packet captured from a vanilla 26.3 server at join, two
+    /// clocks: `Long 13071`, then `VarInt 2`, `(0, 66678, 0.0, 1.0)` and
+    /// `(1, 13071, 0.0, 1.0)`. Reading the clock as a holder id + 1 turns the
+    /// first key into an inline definition and the packet stops decoding.
+    #[test]
+    fn a_time_clock_is_a_plain_registry_id() {
+        let payload = [
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x33, 0x0f, // game_time 13071
+            0x02, // two clocks
+            0x00, 0xf6, 0x88, 0x04, 0x00, 0x00, 0x00, 0x00, 0x3f, 0x80, 0x00, 0x00, // clock 0
+            0x01, 0x8f, 0x66, 0x00, 0x00, 0x00, 0x00, 0x3f, 0x80, 0x00, 0x00, // clock 1
+        ];
+        let decoded =
+            Clientbound::decode(crate::ids::play::clientbound::SET_TIME, &payload).unwrap();
+        let Clientbound::SetTime(t) = decoded else {
+            panic!("expected SetTime")
+        };
+        assert_eq!(t.game_time, 13071);
+        assert_eq!(t.clocks.len(), 2);
+        assert_eq!((t.clocks[0].clock, t.clocks[0].total_ticks), (0, 66678));
+        assert_eq!((t.clocks[1].clock, t.clocks[1].total_ticks), (1, 13071));
+        assert_eq!(t.clocks[0].rate, 1.0);
     }
 
     #[test]
