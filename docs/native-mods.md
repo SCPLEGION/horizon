@@ -240,6 +240,8 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
+API 92 adds `name` (display name) and `tooltip` (the other plain tooltip lines) to each stack `native_creative_stacks()` returns. Bundles that use them need `"hooks": 92`.
+
 API 91 adds `native_creative_stacks()`: every stack the creative inventory lists, the variants of an item (potions, tipped arrows, enchanted books...) included with their components, and the tabs each is in (for a recipe viewer's list and its creative tab search). Bundles that use it need `"hooks": 91`.
 
 API 90 adds `native_anvil_recipes()`: the anvil's recipes as `AnvilMenu.createResult` works them out (each damageable item with the materials that repair it, each enchantable item with each enchantment's books; stacks index as in `native_recipes`, each result with its level cost), made once, none outside a world. Bundles that use it need `"hooks": 90`.

@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 91;
+pub(crate) const NATIVE_HOOKS_API: u32 = 92;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -635,6 +635,10 @@ pub(crate) struct NativeRecipes {
 pub(crate) struct NativeCreativeStack {
     pub(crate) stack: NativeStack,
     pub(crate) tabs: Vec<String>,
+    /// The stack's display name (a potion's, an enchanted book's) in the player's language.
+    pub(crate) name: String,
+    /// The other lines of its tooltip, plain text.
+    pub(crate) tooltip: Vec<String>,
 }
 
 /// An anvil recipe of [`native_anvil_recipes`]: the stack in the left slot, the material or book in the right slot
@@ -2884,7 +2888,12 @@ impl Game<'_> {
             .iter()
             .map(|s| {
                 let k = key(s);
+                let lines = self.stack_tooltip(s);
+                let mut plain = lines.iter().map(|(t, _)| t.plain());
+                let name = plain.next().unwrap_or_default();
                 NativeCreativeStack {
+                    name,
+                    tooltip: plain.collect(),
                     tabs: tabs_of.get(&k).cloned().unwrap_or_default(),
                     stack: NativeStack { item: k.0, count: 1, components: k.1 },
                 }
