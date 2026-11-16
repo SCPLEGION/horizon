@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 92;
+pub(crate) const NATIVE_HOOKS_API: u32 = 93;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -639,6 +639,22 @@ pub(crate) struct NativeCreativeStack {
     pub(crate) name: String,
     /// The other lines of its tooltip, plain text.
     pub(crate) tooltip: Vec<String>,
+}
+
+/// A fuel of [`native_fuels`]: the item and the ticks it burns in a furnace (not a fast-cooking one).
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct NativeFuel {
+    pub(crate) item: String,
+    pub(crate) ticks: i32,
+}
+
+/// A compostable of [`native_compostables`]: the item and the layers one of it adds to a composter.
+#[allow(dead_code)]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct NativeCompostable {
+    pub(crate) item: String,
+    pub(crate) layers: i32,
 }
 
 /// An anvil recipe of [`native_anvil_recipes`]: the stack in the left slot, the material or book in the right slot
@@ -2866,6 +2882,37 @@ impl Game<'_> {
     pub(super) fn native_anvil_recipes(&mut self) -> Option<Arc<Vec<NativeAnvilRecipe>>> {
         self.player.as_ref()?;
         self.made_anvil_recipes()
+    }
+    /// Every item that burns in a furnace (`cooking_fuel`) with its burn time in ticks, sorted by id. API 93.
+    pub(super) fn native_fuels(&self) -> Vec<NativeFuel> {
+        let items = self.items();
+        let mut out: Vec<NativeFuel> = items
+            .items
+            .keys()
+            .filter_map(|id| {
+                let ticks = self.res.providers().burn_time(items, &ItemStack::new(id, 1), false);
+                (ticks > 0).then(|| NativeFuel { item: id.to_string(), ticks })
+            })
+            .collect();
+        out.sort_by(|a, b| a.item.cmp(&b.item));
+        out
+    }
+    /// Every item a composter takes (`compostable`) with the layers one adds, sorted by id. API 93.
+    pub(super) fn native_compostables(&mut self) -> Vec<NativeCompostable> {
+        let providers: Vec<(String, serde_json::Value)> = self
+            .items()
+            .items
+            .iter()
+            .filter_map(|(id, i)| i.compostable.clone().map(|v| (id.to_string(), v)))
+            .collect();
+        let context = super::commands::compute::ComputeContext { block: None, target: None };
+        let mut out: Vec<NativeCompostable> = providers
+            .into_iter()
+            .map(|(item, v)| NativeCompostable { item, layers: self.provider_int(&v, &context, 0).unwrap_or(0) })
+            .filter(|c| c.layers > 0)
+            .collect();
+        out.sort_by(|a, b| a.item.cmp(&b.item));
+        out
     }
     /// Every stack the creative inventory's search tab lists (potions, tipped arrows, enchanted books and the other
     /// variants of an item included, with their components in vanilla's item syntax) and the creative tabs each is
