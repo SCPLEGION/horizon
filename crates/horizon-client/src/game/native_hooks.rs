@@ -2510,22 +2510,22 @@ impl Game<'_> {
         let Some(ty) = ParticleType::from_name(name) else {
             return false;
         };
-        if matches!(
-            ty,
+        let needs_more = match ty {
             ParticleType::Block
-                | ParticleType::BlockMarker
-                | ParticleType::FallingDust
-                | ParticleType::DustPillar
-                | ParticleType::BlockCrumble
-                | ParticleType::Item
-                | ParticleType::Trail
-                | ParticleType::Vibration
-                | ParticleType::Geyser
-                | ParticleType::GeyserPlume
-                | ParticleType::GeyserBase
-                | ParticleType::GeyserPoof
-        ) || !at.into_iter().chain(vel).all(f64::is_finite)
-        {
+            | ParticleType::BlockMarker
+            | ParticleType::FallingDust
+            | ParticleType::DustPillar
+            | ParticleType::BlockCrumble
+            | ParticleType::Item
+            | ParticleType::Trail
+            | ParticleType::Vibration
+            | ParticleType::Geyser
+            | ParticleType::GeyserPlume
+            | ParticleType::GeyserBase
+            | ParticleType::GeyserPoof => true,
+            _ => false,
+        };
+        if needs_more || !at.into_iter().chain(vel).all(f64::is_finite) {
             return false;
         }
         self.particles.add(&ParticleOptions::simple(ty), at, vel);
