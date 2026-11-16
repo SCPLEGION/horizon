@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 88;
+pub(crate) const NATIVE_HOOKS_API: u32 = 89;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -1282,6 +1282,12 @@ impl Game<'_> {
         button: u8,
         claimed: &mut bool,
     ) {
+        let _ = (window, at, button, claimed);
+    }
+    /// A mouse button was released on a container screen (`button` 0 left, 1 right), the cursor at `at`, before the
+    /// game handles it: the end of a drag a mod started in `native_container_click` (a recipe viewer's item dragged
+    /// into a ghost slot). Set `claimed` to take the release. API 89.
+    pub(super) fn native_container_release(&mut self, window: [f32; 4], at: [f32; 2], button: u8, claimed: &mut bool) {
         let _ = (window, at, button, claimed);
     }
     /// A key went down or up (`key.keyboard.*`, as `native_ui_key`) on a container screen, with the text it types

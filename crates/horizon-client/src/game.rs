@@ -8740,7 +8740,7 @@ impl Game<'_> {
     fn inventory_mouse_release(&mut self, right: bool) {
         use horizon_client::container_screen::{Release, Target};
         self.tweak_release();
-        if self.native_panel_drop() {
+        if self.native_container_let_go(right) || self.native_panel_drop() {
             return;
         }
         let (slot, outside) = self.inventory_target();

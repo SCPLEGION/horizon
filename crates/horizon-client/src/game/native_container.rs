@@ -34,6 +34,19 @@ impl Game<'_> {
         claimed
     }
 
+    /// A mouse release on a container screen: true when a mod claimed it.
+    pub(super) fn native_container_let_go(&mut self, right: bool) -> bool {
+        let Some(r) = self.renderer.as_ref() else {
+            return false;
+        };
+        let batch = HudBatch::new([r.config.width, r.config.height]);
+        let window = self.container_window(&batch);
+        let at = [self.cursor.0, self.cursor.1];
+        let mut claimed = false;
+        self.native_container_release(window, at, u8::from(right), &mut claimed);
+        claimed
+    }
+
     /// A key on a container screen (Escape excluded by the caller): true when a mod claimed it.
     pub(super) fn native_container_key_event(&mut self, event: &KeyEvent) -> bool {
         use horizon_client::clipboard::{Clipboard, EditShortcut};
