@@ -649,12 +649,13 @@ pub(crate) struct NativeFuel {
     pub(crate) ticks: i32,
 }
 
-/// A compostable of [`native_compostables`]: the item and the layers one of it adds to a composter.
+/// A compostable of [`native_compostables`]: the item and the chance one of it adds a layer to a composter
+/// (the `p` of the layers provider's binomial; 1.0 for a fixed number of layers).
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct NativeCompostable {
     pub(crate) item: String,
-    pub(crate) layers: i32,
+    pub(crate) chance: f32,
 }
 
 /// An anvil recipe of [`native_anvil_recipes`]: the stack in the left slot, the material or book in the right slot
@@ -2897,7 +2898,7 @@ impl Game<'_> {
         out.sort_by(|a, b| a.item.cmp(&b.item));
         out
     }
-    /// Every item a composter takes (`compostable`) with the layers one adds, sorted by id. API 93.
+    /// Every item a composter takes (`compostable`) with the chance one adds a layer, sorted by id. API 93.
     pub(super) fn native_compostables(&mut self) -> Vec<NativeCompostable> {
         let providers: Vec<(String, serde_json::Value)> = self
             .items()
@@ -2906,11 +2907,22 @@ impl Game<'_> {
             .filter_map(|(id, i)| i.compostable.clone().map(|v| (id.to_string(), v)))
             .collect();
         let context = super::commands::compute::ComputeContext { block: None, target: None };
-        let mut out: Vec<NativeCompostable> = providers
-            .into_iter()
-            .map(|(item, v)| NativeCompostable { item, layers: self.provider_int(&v, &context, 0).unwrap_or(0) })
-            .filter(|c| c.layers > 0)
-            .collect();
+        let mut out: Vec<NativeCompostable> = Vec::new();
+        for (item, v) in providers {
+            let chance = match v.get("p") {
+                Some(p) => self.provider_float(p, &context, 0).unwrap_or(0.0),
+                None => {
+                    if self.provider_int(&v, &context, 0).unwrap_or(0) > 0 {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                }
+            };
+            if chance > 0.0 {
+                out.push(NativeCompostable { item, chance });
+            }
+        }
         out.sort_by(|a, b| a.item.cmp(&b.item));
         out
     }
