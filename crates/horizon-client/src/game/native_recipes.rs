@@ -260,6 +260,27 @@ impl Game<'_> {
             out.push(r);
         }
         for s in &stations.recipes.smithing {
+            if let Smithing::Trim { id, template, base, addition, pattern } = s {
+                // One step per base and material: the base trimmed with the material, as the smithing table makes it.
+                let enchantments = &stations.enchantments;
+                let (mut bases, mut mats, mut results) = (Vec::new(), Vec::new(), Vec::new());
+                for b in &base.1 {
+                    for a in &addition.1 {
+                        let (bs, ms) = (ItemStack::new(b, 1), ItemStack::new(a, 1));
+                        let Some(res) = horizon_client::stations::apply_trim(enchantments, &bs, &ms, pattern) else { continue };
+                        if let (Some(b), Some(m), Some(r)) = (index.of(&bs), index.of(&ms), index.of(&res)) {
+                            bases.push(b);
+                            mats.push(m);
+                            results.push(r);
+                        }
+                    }
+                }
+                let mut r = recipe(id.clone(), RecipeKind::Smithing);
+                r.slots = vec![index.any(template), bases, mats];
+                r.results = results;
+                out.push(r);
+                continue;
+            }
             let (id, template, base, addition, results) = match s {
                 Smithing::Transform {
                     id,
@@ -274,13 +295,7 @@ impl Game<'_> {
                     addition,
                     index.stack(result, 1, String::new()).into_iter().collect(),
                 ),
-                Smithing::Trim {
-                    id,
-                    template,
-                    base,
-                    addition,
-                    ..
-                } => (id, template, base, addition, index.any(base)),
+                Smithing::Trim { id, template, base, addition, .. } => (id, template, base, addition, index.any(base)),
             };
             let mut r = recipe(id.clone(), RecipeKind::Smithing);
             r.slots = vec![index.any(template), index.any(base), index.any(addition)];
