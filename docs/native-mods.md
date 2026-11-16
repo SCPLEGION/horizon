@@ -240,6 +240,8 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
+API 88 adds `native_draw_item_tooltip(batch, item, at)`: the game's own tooltip of an item, for a viewer that lists items (it is drawn on top of what was drawn before). Bundles that use it need `"hooks": 88`.
+
 API 87 adds an overlay for container screens (the inventory and every window of slots), for recipe viewers and the like: `native_container_draw(window, batch)` draws after the screen (`window` is its left, top, width, height in GUI pixels), and a mod hears, before the game does, `native_container_click(window, at, button, claimed)`, `native_container_key(key, text, pressed, claimed)` (every key but Escape, both edges; a paste gives the clipboard) and `native_container_wheel(at, steps, claimed)`; setting `claimed` takes the input from the game (a focused search box takes the inventory key). `native_hovered_stack()` gives the stack in the slot under the cursor. Bundles that use them need `"hooks": 87`.
 
 API 86 adds the hook `native_screen_drop`: an item pressed on the item panel (`native_panel_items`) and released over a mod's container screen reaches the mod with the pointer position (as `native_screen_click`) and the stack, so a ghost slot (a filter) can take it as a recipe viewer's drag does. Bundles that use it need `"hooks": 86`.

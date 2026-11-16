@@ -283,7 +283,7 @@ pub struct NativeWorldModel {
 /// The hook points' API version. The launcher reads this line from the
 /// source it builds; keep its form.
 #[allow(dead_code)]
-pub(crate) const NATIVE_HOOKS_API: u32 = 87;
+pub(crate) const NATIVE_HOOKS_API: u32 = 88;
 
 /// The largest mod packet a server sends a client (vanilla's clientbound
 /// custom payload limit, 1 MiB). API 22.
@@ -2570,6 +2570,17 @@ impl Game<'_> {
         let batch = HudBatch::new([r.config.width, r.config.height]);
         let slot = self.slot_at(&batch, self.cursor.0, self.cursor.1)?;
         self.slot_view(slot)
+    }
+    /// Draws the game's own tooltip of one `item` (`minecraft:diamond`; name, rarity colour, its lines) with its
+    /// corner at `at`, as hovering it in a container does; false for an item the game does not have. Call it from
+    /// `native_container_draw` or a mod screen's draw, last, so it stays on top. API 88.
+    pub(super) fn native_draw_item_tooltip(&self, batch: &mut HudBatch, item: &str, at: [f32; 2]) -> bool {
+        if self.res.items().get(item).is_none() {
+            return false;
+        }
+        let lines = self.stack_tooltip(&ItemStack::new(item, 1));
+        self.draw_tooltip_lines(batch, &lines, at[0], at[1]);
+        true
     }
     /// Whether the left mouse button is down: a window of the mod's own follows the
     /// cursor while it is (`native_screen_click` sees the press only). API 35.
