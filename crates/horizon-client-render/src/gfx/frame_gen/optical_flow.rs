@@ -60,6 +60,7 @@ struct Pipelines {
     luma_pyramid: wgpu::ComputePipeline,
     scd_histogram: wgpu::ComputePipeline,
     scd_divergence: wgpu::ComputePipeline,
+    scd_finalize: wgpu::ComputePipeline,
     search: wgpu::ComputePipeline,
     filter: wgpu::ComputePipeline,
     scale: wgpu::ComputePipeline,
@@ -84,6 +85,7 @@ pub struct OpticalFlow {
     frames: [Frame; 2],
     filter: [wgpu::BindGroup; LEVELS],
     scd_divergence: wgpu::BindGroup,
+    scd_finalize: wgpu::BindGroup,
     scd_histogram: wgpu::Buffer,
     scd_previous_histogram: wgpu::Buffer,
     scd_temp: wgpu::Buffer,
@@ -183,6 +185,7 @@ impl OpticalFlow {
             luma_pyramid: pipeline("luma_pyramid"),
             scd_histogram: pipeline("scd_histogram_pass"),
             scd_divergence: pipeline("scd_divergence_pass"),
+            scd_finalize: pipeline("scd_finalize_pass"),
             search: pipeline("search_pass"),
             filter: pipeline("filter_flow"),
             scale: pipeline("scale_pass"),
@@ -235,6 +238,7 @@ impl OpticalFlow {
             HISTOGRAM_WIDTH * 4,
         );
         let scd_temp = buffer(device, "Scene change temp", 12);
+        let scd_next_histogram = buffer(device, "Next scene change histogram", HISTOGRAM_WIDTH * 4);
         let scd_output = buffer(device, "Scene change detection", 12);
         let frame = |current: usize| {
             let (cur, prev) = (&luma[current], &luma[1 - current]);
@@ -302,7 +306,18 @@ impl OpticalFlow {
                 (7, whole(&scd_histogram)),
                 (8, whole(&scd_previous_histogram)),
                 (9, whole(&scd_temp)),
+                (11, whole(&scd_next_histogram)),
+            ],
+        );
+        let scd_finalize = bind(
+            device,
+            &pipelines.scd_finalize,
+            &[
+                (7, whole(&scd_histogram)),
+                (8, whole(&scd_previous_histogram)),
+                (9, whole(&scd_temp)),
                 (10, whole(&scd_output)),
+                (11, whole(&scd_next_histogram)),
             ],
         );
         Self {
@@ -312,6 +327,7 @@ impl OpticalFlow {
             frames,
             filter,
             scd_divergence,
+            scd_finalize,
             scd_histogram,
             scd_previous_histogram,
             scd_temp,
@@ -325,15 +341,17 @@ impl OpticalFlow {
     }
 
     /// The flow from the previous call's `color` to this one's. `color`: `display` size,
-    /// a float texture holding Horizon's frame (gamma-encoded RGB, the swapchain's
-    /// values: AMD's SDR back buffer). `reset`: the previous frame is unrelated (first
-    /// frame, resize, teleport).
+    /// a float texture holding Horizon's frame (gamma-encoded RGB: the swapchain's values,
+    /// AMD's SDR back buffer, or the float frame's light, 1 at paper white). `peak`: on the
+    /// float frame, the display's peak in paper whites. `reset`: the previous frame is
+    /// unrelated (first frame, resize, teleport).
     pub fn dispatch(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         color: &wgpu::TextureView,
+        peak: Option<f32>,
         reset: bool,
     ) {
         let reset = reset || self.first;
@@ -355,8 +373,8 @@ impl OpticalFlow {
                 level: level as u32,
                 level_count: LEVELS as u32,
                 frame_index: self.frame_index,
-                transfer_function: 0,
-                min_max_luminance: [0.0, 1.0],
+                transfer_function: if peak.is_some() { 3 } else { 0 },
+                min_max_luminance: [0.0, peak.unwrap_or(1.0)],
             };
             queue.write_buffer(buffer, 0, bytemuck::bytes_of(&params));
         }
@@ -406,6 +424,7 @@ impl OpticalFlow {
             9,
         );
         run(&p.scd_divergence, &self.scd_divergence, 9, 3, 1);
+        run(&p.scd_finalize, &self.scd_finalize, 9, 1, 1);
         for level in (0..LEVELS).rev() {
             let luma = self.display.map(|v| (v >> level).max(1));
             run(
@@ -467,12 +486,30 @@ pub(super) mod tests {
         .unwrap();
     }
 
-    /// A device with WebGPU's default limits (what every GPU wgpu runs on has), or `None`
-    /// without a GPU.
+    /// A default-limits device that can write the optical-flow storage format,
+    /// or `None` with an observable reason when no suitable adapter is available.
     pub fn device() -> Option<(wgpu::Device, wgpu::Queue)> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let adapter = pollster::block_on(instance.request_adapter(&Default::default())).ok()?;
-        pollster::block_on(adapter.request_device(&Default::default())).ok()
+        let adapter = crate::gfx::test_gpu::adapter()?;
+        if !crate::gfx::test_gpu::supports_texture_usage(
+            &adapter,
+            wgpu::TextureFormat::Rg32Sint,
+            wgpu::TextureUsages::STORAGE_BINDING,
+        ) {
+            return None;
+        }
+        if !adapter
+            .get_texture_format_features(wgpu::TextureFormat::Rg32Sint)
+            .flags
+            .contains(wgpu::TextureFormatFeatureFlags::STORAGE_WRITE_ONLY)
+        {
+            let info = adapter.get_info();
+            eprintln!(
+                "skipped: {} / {:?} lacks Rg32Sint storage write access",
+                info.name, info.backend
+            );
+            return None;
+        }
+        Some(crate::gfx::test_gpu::device(&adapter))
     }
 
     /// Noise in 4x4 pixel cells, moved by `shift` pixels: what was at `p` is at `p + shift`.
@@ -581,7 +618,7 @@ pub(super) mod tests {
         reset: bool,
     ) {
         let mut encoder = device.create_command_encoder(&Default::default());
-        flow.dispatch(device, queue, &mut encoder, color, reset);
+        flow.dispatch(device, queue, &mut encoder, color, None, reset);
         queue.submit([encoder.finish()]);
     }
 
@@ -597,10 +634,27 @@ pub(super) mod tests {
             .collect()
     }
 
+    fn scd(device: &wgpu::Device, queue: &wgpu::Queue, flow: &OpticalFlow) -> u32 {
+        let mut encoder = device.create_command_encoder(&Default::default());
+        let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 12,
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        encoder.copy_buffer_to_buffer(flow.scene_change(), 0, &buffer, 0, 12);
+        queue.submit([encoder.finish()]);
+        buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
+        let bytes = buffer.slice(..).get_mapped_range().unwrap().to_vec();
+        u32::from_le_bytes(bytes[4..8].try_into().unwrap())
+    }
+
     /// A frame moved right by 16 and down by 8: the blocks inside report where they were
     /// (-16, -8), and nothing reads as a scene change. A much darker frame then does.
     #[test]
     fn finds_a_shift_and_a_scene_change() {
+        let _gpu = crate::gfx::test_gpu::lock();
         let Some((device, queue)) = device() else {
             return;
         };
@@ -630,24 +684,41 @@ pub(super) mod tests {
             inside.len(),
             &inside[..8]
         );
-        let scd = |device: &wgpu::Device, queue: &wgpu::Queue, flow: &OpticalFlow| {
-            let mut encoder = device.create_command_encoder(&Default::default());
-            let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: None,
-                size: 12,
-                usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-                mapped_at_creation: false,
-            });
-            encoder.copy_buffer_to_buffer(flow.scene_change(), 0, &buffer, 0, 12);
-            queue.submit([encoder.finish()]);
-            buffer.slice(..).map_async(wgpu::MapMode::Read, |_| {});
-            device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
-            let bytes = buffer.slice(..).get_mapped_range().unwrap().to_vec();
-            u32::from_le_bytes(bytes[4..8].try_into().unwrap())
-        };
         assert_eq!(scd(&device, &queue, &flow) & 0xf, 0);
         run(&device, &queue, &mut flow, &other, false);
         assert_eq!(scd(&device, &queue, &flow) & 1, 1);
         assert!(vectors(&device, &queue, &flow).iter().all(|v| *v == [0, 0]));
+    }
+
+    #[test]
+    fn repeated_cuts_and_stable_frames_update_the_history() {
+        let _gpu = crate::gfx::test_gpu::lock();
+        let Some((device, queue)) = device() else {
+            return;
+        };
+        let size = [384, 216];
+        let bright = upload(
+            &device,
+            &queue,
+            size,
+            &vec![255; (size[0] * size[1] * 4) as usize],
+        );
+        let dark_pixels: Vec<u8> = (0..size[0] * size[1])
+            .flat_map(|_| [0, 0, 0, 255])
+            .collect();
+        let dark = upload(&device, &queue, size, &dark_pixels);
+        let mut flow = OpticalFlow::new(&device, size);
+        run(&device, &queue, &mut flow, &bright, true);
+        for _ in 0..6 {
+            run(&device, &queue, &mut flow, &bright, false);
+        }
+        for frame in 0..16 {
+            let color = if frame % 2 == 0 { &dark } else { &bright };
+            run(&device, &queue, &mut flow, color, false);
+            assert_eq!(scd(&device, &queue, &flow) & 1, 1, "cut {frame}");
+            assert!(vectors(&device, &queue, &flow).iter().all(|v| *v == [0, 0]));
+            run(&device, &queue, &mut flow, color, false);
+            assert_eq!(scd(&device, &queue, &flow) & 1, 0, "stable frame {frame}");
+        }
     }
 }

@@ -18,7 +18,7 @@ It also times the install and the world's load with the mod against the same wor
 Prints one JSON line per step and a summary; exits 1 when a step fails.
 
 Needs the launcher (launcher/target/debug/horizon-launcher, built with
-`--features gpui/runtime_shaders` on macOS), the game and horizon-ctl
+`--features gpui_platform/runtime_shaders` on macOS), the game and horizon-ctl
 (target/fast/horizon-client, target/fast/horizon-ctl, or --bin DIR) and the prepared resources in
 .local/horizon-client/26.3. Downloads from Modrinth.
 """
@@ -159,7 +159,7 @@ def main():
     args = ap.parse_args()
 
     home = Path(tempfile.mkdtemp(prefix="horizon-mod-browser-"))
-    env = lab.game_env(HORIZON_HOME=home, HORIZON_NO_HEARTBEAT="1", HORIZON_CONTROL=home / "ctl.sock")
+    env = lab.game_env(HORIZON_HOME=home, HORIZON_CONTROL=home / "ctl.sock")
     launcher = [args.launcher]
     game = Game(str(Path(args.bin) / "horizon-ctl"), str(Path(args.bin) / "horizon-client"),
                 args.resources, home, env)

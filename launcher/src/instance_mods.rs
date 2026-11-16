@@ -6,10 +6,11 @@
 //!
 //! Each row shows the mod's own icon: Modrinth's for what the browser installed from it (the URLs
 //! asked for in one request and kept beside the image cache, the images through the Mods page's
-//! cache at the row's size), else the one its jar names, else a generic glyph.
+//! cache at the row's size), else the package's icon or the one its jar names, else a generic glyph.
 use super::*;
 use crate::plate::alpha;
 use crate::shell::{c, Action};
+use build_mode::ModKind;
 use horizon_launcher::browser::{
     horizon, images, installed, java, modrinth, Kind as PackKind, SourceId,
 };
@@ -26,14 +27,19 @@ const OFF: &str = ".disabled";
 #[derive(Clone)]
 pub(super) struct ModRow {
     /// Its file in the instance, as it is when on (`mods/lumen-0.6.2.jar`).
-    file: String,
-    name: String,
-    version: String,
-    on: bool,
+    pub(super) file: String,
+    pub(super) name: String,
+    pub(super) version: String,
+    pub(super) on: bool,
     /// What the browser knows of it; None: a file put in by hand.
-    entry: Option<installed::Entry>,
-    /// The icon its jar names, scaled to the row (`images::ROW`) and decoded once by the UI.
-    icon: Option<Arc<gpui::Image>>,
+    pub(super) entry: Option<installed::Entry>,
+    /// Its validated package icon or jar icon, kept between draws.
+    pub(super) icon: Option<Arc<gpui::Image>>,
+    pub(super) error: Option<String>,
+    pub(super) native: Option<native_status::Installed>,
+    pub(super) internals: Vec<String>,
+    /// What the package is and its mod id, for a Horizon mod; None for a Java jar.
+    pub(super) kind: Option<(ModKind, String)>,
 }
 
 /// Modrinth projects' icon URLs by project id, kept on disk beside the image cache so the icons
@@ -52,15 +58,45 @@ fn project_icons_file() -> PathBuf {
 #[derive(Default)]
 pub(super) struct InstanceMods {
     home: Option<PathBuf>,
-    fresh: bool,
+    pub(super) fresh: bool,
     reading: bool,
-    list: Vec<ModRow>,
+    pub(super) list: Vec<ModRow>,
     /// The browser was installing at the last draw: its end changes the list.
     was_busy: bool,
     /// Only the rows near the view are built (a modpack has hundreds), measured again when the
     /// shown list changes (its length and the filter).
-    cull: cull::Cull,
-    shown: (usize, String),
+    pub(super) cull: cull::Cull,
+    pub(super) shown: (usize, String),
+    fingerprint: String,
+}
+
+impl InstanceMods {
+    fn invalidate(&mut self) {
+        self.fresh = false;
+    }
+
+    /// Invalidates the cached list when the native-file fingerprint changes.
+    fn observe_fingerprint(&mut self, fingerprint: String) {
+        if self.fingerprint != fingerprint {
+            self.fingerprint = fingerprint;
+            self.invalidate();
+        }
+    }
+
+    /// Marks a read pending and returns the fingerprint its result must match.
+    fn begin_read(&mut self) -> String {
+        self.reading = true;
+        self.fingerprint.clone()
+    }
+
+    /// Delivers a read, marking it fresh only if its fingerprint is still current.
+    fn complete_read(&mut self, home: &Path, fingerprint: &str, list: Vec<ModRow>) {
+        self.reading = false;
+        if self.home.as_deref() == Some(home) {
+            self.list = list;
+            self.fresh = self.fingerprint == fingerprint;
+        }
+    }
 }
 
 /// The mods of the instance at `home`: a Java one's jars in `mods/` (on or off), a Horizon one's
@@ -100,6 +136,10 @@ fn read(home: &Path, java_instance: bool) -> Vec<ModRow> {
                         on,
                         entry,
                         icon,
+                        error: None,
+                        native: None,
+                        internals: Vec::new(),
+                        kind: None,
                     }
                 })
             })
@@ -107,16 +147,48 @@ fn read(home: &Path, java_instance: bool) -> Vec<ModRow> {
     } else {
         entries
             .into_iter()
-            .map(|e| ModRow {
-                file: e.file.clone(),
-                name: e.title.clone(),
-                version: e.number.clone(),
-                on: horizon::mod_id(&e).is_some_and(|id| java::is_enabled(home, id)),
-                entry: Some(e),
-                icon: None,
+            .map(|e| {
+                let package =
+                    horizon_platform::mod_package::manifest::Package::read(&home.join(&e.file));
+                let icon = mod_icons::load(package.as_ref().map(|p| p.icon.as_ref()));
+                ModRow {
+                    file: e.file.clone(),
+                    name: e.title.clone(),
+                    version: e.number.clone(),
+                    on: horizon::mod_id(&e).is_some_and(|id| java::is_enabled(home, id)),
+                    entry: Some(e),
+                    icon: icon.image,
+                    error: icon.error,
+                    native: None,
+                    internals: package
+                        .as_ref()
+                        .map(|p| native_status::declared_internals(&p.manifest))
+                        .unwrap_or_default(),
+                    kind: package
+                        .as_ref()
+                        .ok()
+                        .map(|p| (ModKind::of(&p.manifest), p.manifest.id.clone())),
+                }
             })
             .collect()
     };
+    if !java_instance {
+        rows.extend(native_status::untracked(home).into_iter().map(|native| {
+            let icon = mod_icons::load(native.icon.as_ref().map(|i| i.as_deref()));
+            ModRow {
+                file: native.file.clone(),
+                name: native.id.clone(),
+                version: native.version.clone(),
+                on: java::is_enabled(home, &native.id),
+                entry: None,
+                icon: icon.image,
+                error: icon.error,
+                kind: Some((ModKind::Native, native.id.clone())),
+                internals: native.internals.clone(),
+                native: Some(native),
+            }
+        }));
+    }
     rows.sort_by_key(|r| r.name.to_lowercase());
     rows
 }
@@ -129,6 +201,11 @@ fn switch_jar(home: &Path, file: &str, on: bool) -> Result<(), String> {
 }
 
 impl Launcher {
+    pub(super) fn instance_mods_changed(&mut self) {
+        self.instance_mods.invalidate();
+        self.instance_mods.cull.reset();
+    }
+
     /// Whether the selected instance has mods to show: Horizon's always, a Java one with a loader.
     pub(super) fn has_mods_tab(&self) -> bool {
         self.selected_instance()
@@ -137,6 +214,9 @@ impl Launcher {
 
     /// Reads the selected instance's mods off the UI thread, once until something changes them.
     fn load_instance_mods(&mut self, cx: &mut Context<Self>) {
+        if self.mod_preview.active {
+            return;
+        }
         let Some(i) = self.selected_instance() else {
             return;
         };
@@ -150,13 +230,19 @@ impl Launcher {
         }
         let busy = self.mods.busy.is_some();
         if m.was_busy && !busy {
-            m.fresh = false;
+            m.invalidate();
         }
         m.was_busy = busy;
+        let fingerprint = if java_instance {
+            String::new()
+        } else {
+            native_status::fingerprint(&home, None)
+        };
+        m.observe_fingerprint(fingerprint);
         if m.fresh || m.reading {
             return;
         }
-        m.reading = true;
+        let read_fingerprint = m.begin_read();
         let task = cx
             .background_executor()
             .spawn(async move { (home.clone(), read(&home, java_instance)) });
@@ -164,11 +250,7 @@ impl Launcher {
             let (home, list) = task.await;
             let _ = this.update(cx, |this, cx| {
                 let m = &mut this.instance_mods;
-                m.reading = false;
-                if m.home.as_ref() == Some(&home) {
-                    m.list = list;
-                    m.fresh = true;
-                }
+                m.complete_read(&home, &read_fingerprint, list);
                 let ids = this
                     .instance_mods
                     .list
@@ -230,11 +312,11 @@ impl Launcher {
         self.mods_image(&url, images::ROW)
     }
 
-    /// A mod's icon at the row's size: Modrinth's, else its jar's, else a glyph.
+    /// A mod's icon at the row's size: Modrinth's, else its package's or jar's, else a glyph.
     pub(super) fn mod_icon(
         &mut self,
         entry: Option<&installed::Entry>,
-        jar: Option<Arc<gpui::Image>>,
+        local: Option<Arc<gpui::Image>>,
         side: f32,
     ) -> Div {
         let n = self.theme.night;
@@ -247,7 +329,7 @@ impl Launcher {
             .size(px(side))
             .rounded(px(night::RADIUS_CONTROL))
             .overflow_hidden();
-        match (remote, jar) {
+        match (remote, local) {
             (Some(path), _) => tile.child(gpui::img(path).size(px(side))),
             (None, Some(image)) => tile.child(gpui::img(image).size(px(side))),
             (None, None) => tile
@@ -264,7 +346,7 @@ impl Launcher {
         m.fresh.then_some(m.list.len())
     }
 
-    fn switch_mod(&mut self, row: &ModRow) {
+    pub(super) fn switch_mod(&mut self, row: &ModRow) {
         let home = self.instance_mods.home.clone().unwrap_or_default();
         let java_instance = self.selected_instance().is_some_and(|i| i.java.is_some());
         match &row.entry {
@@ -273,7 +355,7 @@ impl Launcher {
                 self.mods.message = switch_jar(&home, &row.file, !row.on).err().map(Err);
             }
         }
-        self.instance_mods.fresh = false;
+        self.instance_mods.invalidate();
     }
 
     /// The Mods tab: its buttons (beside the tabs) and the list.
@@ -318,7 +400,7 @@ impl Launcher {
             .value(Field::InstanceModsFilter)
             .trim()
             .to_lowercase();
-        let field = self.field(Field::InstanceModsFilter, "Filter installed", 240., cx);
+        let field = self.field(Field::InstanceModsFilter, tr("Filter installed"), 240., cx);
         let m = &self.instance_mods;
         let rows: Vec<ModRow> = m
             .list
@@ -375,6 +457,14 @@ impl Launcher {
                 |i| rule(self.mod_row(rows[i].clone(), busy, cx).into_any_element()),
             )
         };
+        let native = self.mods.java.is_none()
+            && self.instance_mods.list.iter().any(|r| {
+                r.native.is_some()
+                    || r.entry
+                        .as_ref()
+                        .is_some_and(|e| native_status::is_native_file(&e.file))
+            });
+        let build = native.then(|| self.native_build(cx)).flatten();
         let card = plate::cut(
             night::PIXEL_CORNER,
             2,
@@ -385,6 +475,7 @@ impl Launcher {
         .flex()
         .flex_col()
         .child(header)
+        .children(build)
         .child(body);
         (
             actions,
@@ -401,16 +492,40 @@ impl Launcher {
         let t = self.theme;
         let n = t.night;
         let icon = self.mod_icon(row.entry.as_ref(), row.icon.clone(), 40.);
-        let source = match &row.entry {
-            Some(e) if e.dependency => trf(
-                "{source} · needed by another mod",
-                &[("source", e.source.label())],
-            ),
-            Some(e) => e.source.label().to_string(),
-            None => trf(
-                "Local file · {file}",
-                &[("file", row.file.trim_start_matches("mods/"))],
-            ),
+        let chip = row
+            .kind
+            .as_ref()
+            .filter(|(kind, _)| *kind == ModKind::Native)
+            .and_then(|(_, id)| self.route_chip(id, cx));
+        let controls = if let Some(native) = &row.native {
+            self.native_mod_actions(native, busy, cx)
+        } else {
+            let switch_row = row.clone();
+            div().child(
+                switch(format!("mod-switch-{}", row.file), row.on, &t).on_click(cx.listener(
+                    move |this, _: &ClickEvent, _, cx| {
+                        this.switch_mod(&switch_row);
+                        cx.notify();
+                    },
+                )),
+            )
+        };
+        let source = if let Some(error) = &row.error {
+            error.clone()
+        } else if let Some(origin) = row.native.as_ref().and_then(|n| n.origin.as_ref()) {
+            trf("from GitHub: {source}", &[("source", &origin.label())])
+        } else {
+            match &row.entry {
+                Some(e) if e.dependency => trf(
+                    "{source} · needed by another mod",
+                    &[("source", e.source.label())],
+                ),
+                Some(e) => e.source.label().to_string(),
+                None => trf(
+                    "Local file · {file}",
+                    &[("file", row.file.trim_start_matches("mods/"))],
+                ),
+            }
         };
         let update = row.entry.as_ref().and_then(|e| {
             let key = (e.source, e.project.clone());
@@ -440,7 +555,6 @@ impl Launcher {
                 })),
             })
         });
-        let switch_row = row.clone();
         div()
             .flex()
             .items_center()
@@ -468,26 +582,221 @@ impl Launcher {
                             .child(shell::text(night::CAPTION, c(n.muted)).child(row.version)),
                     )
                     .child(
-                        shell::text(night::CAPTION, c(n.muted))
-                            .truncate()
-                            .child(source),
+                        shell::text(
+                            night::CAPTION,
+                            c(if row.error.is_some() {
+                                n.danger
+                            } else {
+                                n.muted
+                            }),
+                        )
+                        .truncate()
+                        .child(source),
                     ),
             )
+            .children(row.kind.as_ref().map(|(kind, _)| self.kind_badge(*kind)))
+            .children(chip)
+            .children(self.internals_chip(&row.file, &row.internals))
             .children(update)
-            .child(
-                switch(format!("mod-switch-{}", row.file), row.on, &t).on_click(cx.listener(
-                    move |this, _: &ClickEvent, _, cx| {
-                        this.switch_mod(&switch_row);
-                        cx.notify();
-                    },
-                )),
-            )
+            .child(controls)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct TestHome(PathBuf);
+
+    impl TestHome {
+        fn new() -> Self {
+            use std::sync::atomic::{AtomicU64, Ordering};
+            use std::time::{SystemTime, UNIX_EPOCH};
+
+            static NEXT: AtomicU64 = AtomicU64::new(0);
+            let timestamp = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("system clock is before Unix epoch")
+                .as_nanos();
+            loop {
+                let home = std::env::temp_dir().join(format!(
+                    "instance-mods-refresh-{}-{timestamp}-{}",
+                    std::process::id(),
+                    NEXT.fetch_add(1, Ordering::Relaxed)
+                ));
+                match std::fs::create_dir(&home) {
+                    Ok(()) => return Self(home),
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                    Err(error) => panic!("create test home {}: {error}", home.display()),
+                }
+            }
+        }
+    }
+
+    impl Drop for TestHome {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn package_rows_cache_content_and_code_icons_and_preserve_refusals() {
+        use std::io::{Cursor, Write};
+
+        let scratch = TestHome::new();
+        let home = &scratch.0;
+        std::fs::create_dir_all(home.join("mods")).unwrap();
+        std::fs::create_dir_all(home.join(native_mods::INSTALLED)).unwrap();
+        let mut png = Cursor::new(Vec::new());
+        image::RgbaImage::from_pixel(8, 8, image::Rgba([35, 180, 145, 255]))
+            .write_to(&mut png, image::ImageFormat::Png)
+            .unwrap();
+        let png = png.into_inner();
+        let pin = "a".repeat(40);
+        let mut entries = Vec::new();
+        for (id, code, tracked, icon) in [
+            ("content", false, true, Some(png.as_slice())),
+            ("tracked_code", true, true, Some(png.as_slice())),
+            ("local_code", true, false, Some(png.as_slice())),
+            ("no_icon", false, true, None),
+            ("broken", true, false, Some(b"not a PNG".as_slice())),
+        ] {
+            let folder = if code { native_mods::INSTALLED } else { "mods" };
+            let file = format!("{folder}/{id}.hmod");
+            let mut manifest = format!(
+                "id = '{id}'\nname = '{id}'\nversion = '1'\napi = '0.2'\ncapabilities = ['registries']\n"
+            );
+            if code {
+                manifest +=
+                    &format!("[native]\ngame = '26.3'\nhorizon = '{pin}'\nmixins = '{pin}'\n");
+                if id == "tracked_code" || id == "local_code" {
+                    manifest = manifest.replace("[native]", &format!(
+                        "internals = [{{path = 'horizon_client::game::Game', hash = '{}'}}]\n[native]",
+                        "b".repeat(64)
+                    ));
+                }
+            }
+            let mut zip = zip::ZipWriter::new(std::fs::File::create(home.join(&file)).unwrap());
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("horizon-mod.toml", options).unwrap();
+            zip.write_all(manifest.as_bytes()).unwrap();
+            if code {
+                zip.start_file("Cargo.toml", options).unwrap();
+                zip.write_all(b"[package]\nname = 'other'\nversion = '9'\n")
+                    .unwrap();
+                zip.start_file("src/lib.rs", options).unwrap();
+                zip.write_all(b"pub fn hooks() {}\n").unwrap();
+            }
+            if let Some(icon) = icon {
+                zip.start_file("icon.png", options).unwrap();
+                zip.write_all(icon).unwrap();
+            }
+            zip.finish().unwrap();
+            if tracked {
+                entries.push(serde_json::from_value(serde_json::json!({"source":"horizon","project":id,"slug":id,"title":id,"kind":"mod","version":"1","number":"1","file":file,"checksum":"","page":""})).unwrap());
+            }
+        }
+        installed::Installed { entries }.save(home).unwrap();
+        let rows = read(home, false);
+        assert_eq!(rows.len(), 5, "tracked native rows must not be duplicated");
+        for id in ["content", "tracked_code", "local_code"] {
+            let row = rows.iter().find(|r| r.name == id).unwrap();
+            assert!(row.icon.is_some(), "{id} must show its package icon");
+            assert!(row.error.is_none(), "{id}: {:?}", row.error);
+            let expected: &[&str] = if id == "content" {
+                &[]
+            } else {
+                &["horizon_client::game::Game"]
+            };
+            assert_eq!(row.internals, expected);
+        }
+        let no_icon = rows.iter().find(|r| r.name == "no_icon").unwrap();
+        assert!(no_icon.icon.is_none() && no_icon.error.is_none());
+        let broken = rows.iter().find(|r| r.name == "broken").unwrap();
+        assert!(broken.icon.is_none());
+        assert!(broken.error.as_ref().unwrap().contains("icon.png"));
+        assert!(
+            broken.native.is_some(),
+            "invalid files must remain removable"
+        );
+    }
+
+    #[test]
+    fn native_mod_changes_during_read_trigger_a_fresh_read() {
+        let scratch = TestHome::new();
+        let home = &scratch.0;
+        let installed = home.join(native_mods::INSTALLED);
+        std::fs::create_dir_all(&installed).unwrap();
+        std::fs::write(installed.join("first.hmod"), b"unreadable").unwrap();
+
+        let mut mods = InstanceMods {
+            home: Some(home.clone()),
+            ..InstanceMods::default()
+        };
+        mods.observe_fingerprint(native_status::fingerprint(home, None));
+        assert!(!mods.fresh);
+        let read_fingerprint = mods.begin_read();
+        let old_list = read(home, false);
+        assert_eq!(old_list.len(), 1);
+
+        std::fs::write(installed.join("second.hmod"), b"unreadable").unwrap();
+        mods.observe_fingerprint(native_status::fingerprint(home, None));
+        assert!(!mods.fresh);
+        assert!(mods.reading, "the first read must still be pending");
+
+        mods.complete_read(home, &read_fingerprint, old_list);
+        let another_read_needed = !mods.fresh && !mods.reading;
+        if another_read_needed {
+            let read_fingerprint = mods.begin_read();
+            mods.complete_read(home, &read_fingerprint, read(home, false));
+        }
+        let final_files: Vec<_> = mods.list.iter().map(|row| row.file.as_str()).collect();
+        let final_listing_is_fresh = mods.fresh
+            && final_files.contains(&"horizon-native-mods/first.hmod")
+            && final_files.contains(&"horizon-native-mods/second.hmod");
+        assert!(
+            another_read_needed && final_listing_is_fresh,
+            "a native change during a read must leave another read needed and deliver both files; another_read_needed={another_read_needed}, fresh={}, files={final_files:?}",
+            mods.fresh
+        );
+    }
+
+    #[test]
+    fn horizon_mods_include_local_native_files_without_duplicating_registry_rows() {
+        let home =
+            std::env::temp_dir().join(format!("instance-native-mods-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&home);
+        std::fs::create_dir_all(home.join(native_mods::INSTALLED)).unwrap();
+        for id in ["local", "registry"] {
+            std::fs::write(
+                home.join(native_mods::INSTALLED).join(format!("{id}.hmod")),
+                b"unreadable",
+            )
+            .unwrap();
+        }
+        let entry: installed::Entry = serde_json::from_value(serde_json::json!({"source":"horizon","project":"registry","slug":"registry","title":"Registry mod","kind":"mod","version":"1","number":"1","file":"horizon-native-mods/registry.hmod","checksum":"","page":""})).unwrap();
+        installed::Installed {
+            entries: vec![entry],
+        }
+        .save(&home)
+        .unwrap();
+        java::set_enabled(&home, "local", false).unwrap();
+        java::set_enabled(&home, "registry", true).unwrap();
+        let rows = read(&home, false);
+        let seen: Vec<_> = rows
+            .iter()
+            .map(|r| (r.name.as_str(), r.on, r.native.is_some()))
+            .collect();
+        assert_eq!(
+            seen,
+            [("local", false, true), ("Registry mod", true, false)]
+        );
+        assert!(
+            read(&home, true).is_empty(),
+            "native mods stay out of Java instances"
+        );
+        std::fs::remove_dir_all(home).unwrap();
+    }
 
     #[test]
     fn a_java_instance_lists_its_jars_on_and_off() {

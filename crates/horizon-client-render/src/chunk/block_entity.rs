@@ -2,13 +2,19 @@
 //! and its payloads). Plain data, as vanilla's block entities are world data;
 //! their behaviour lives with the features that use them (`containers`,
 //! `brewing`, `signs`, ...), which re-export these types under their old paths.
-use horizon_client_core::{text::Text, who::Who};
-use horizon_items::{banner_layer::BannerLayer, items::ItemStack};
-use horizon_world::{
-    level::sculk::SculkSpreader,
-    nbt::{Compound, Tag},
+use horizon_client_core::{
+    text::Text,
+    who::{EventSource, Who},
 };
+use horizon_items::{banner_layer::BannerLayer, items::ItemStack};
+mod mod_models;
+pub use mod_api::item::containers::{ModContainer, ModEnergyBuffer, ModFluidTanks};
+pub use mod_models::{ModBlockEntity, ModBlockEntityFields, ModRevision};
 use std::{collections::HashMap, sync::Arc};
+use {
+    horizon_core::nbt::{Compound, Tag},
+    horizon_world::level::sculk::SculkSpreader,
+};
 
 /// An entity's UUID as its four ints (`UUIDUtil.CODEC`).
 pub type Uuid = [i32; 4];
@@ -53,6 +59,9 @@ pub enum BlockEntity {
     CreakingHeart(Box<CreakingHeart>),
     /// `BannerBlockEntity`: the pattern layers.
     Banner(Banner),
+    /// `CopperGolemStatueBlockEntity`: its own components, which hold the
+    /// custom name of the golem it was (`createStatue`).
+    CopperGolemStatue(Compound),
     /// `CrafterBlockEntity`.
     Crafter(Crafter),
     /// `SpawnerBlockEntity` (`crate::mobs::spawner`).
@@ -71,9 +80,18 @@ pub enum BlockEntity {
     Skull(Skull),
     /// `TheEndGatewayBlockEntity`: its age and configured destination.
     EndGateway(EndGateway),
+    /// `TheEndPortalBlockEntity`: no data, only identity.
+    EndPortal,
     /// `DaylightDetectorBlockEntity`: no data, only the ticker
     /// (`DaylightDetectorBlock.tickEntity`).
     DaylightDetector,
+    /// `BellBlockEntity`: saved identity only; ringing state is kept separately.
+    Bell,
+    /// `ConduitBlockEntity`: the UUID of its `destroyTarget` (`Target`). Its
+    /// shape and animation are kept separately (`block_entity_anim`).
+    Conduit(Option<[i32; 4]>),
+    /// `EnchantingTableBlockEntity`: its custom name is the world's block name.
+    EnchantingTable,
     /// Suspicious sand and gravel: saved loot and the transient brushed face.
     Brushable(Box<Brushable>),
     /// A shelf holds three displayed item stacks.
@@ -83,7 +101,7 @@ pub enum BlockEntity {
     /// A block entity of a mod (`native_block_entity`), kept as its saved
     /// compound for the mod to read and change.
     Mod(Box<ModBlockEntity>),
-    /// `PotentSulfurBlockEntity` (`game/potent_sulfur.rs`).
+    /// `PotentSulfurBlockEntity` (`game/blocks/potent_sulfur.rs`).
     PotentSulfur(PotentSulfur),
     /// `StructureBlockEntity` (`structure_block.rs`).
     StructureBlock(Box<crate::structure_block::StructureBlock>),
@@ -93,32 +111,6 @@ pub enum BlockEntity {
     TestBlock(Box<crate::test_block::TestBlock>),
     /// `TestInstanceBlockEntity` (`test_instance_block.rs`).
     TestInstanceBlock(Box<crate::test_instance_block::TestInstanceBlock>),
-}
-/// A mod's block entity: its type id (`mymod:machine`), its saved
-/// compound without `id`, `x`, `y`, `z` and `Items`, its item slots
-/// (`Items`) when its block has a container (`ModContainer`), and the data
-/// slots its menu shows (`ContainerData`: a furnace menu's flame and arrow),
-/// which the mod sets and nothing saves.
-#[derive(Clone, Debug, Default, PartialEq)]
-pub struct ModBlockEntity {
-    pub id: String,
-    pub nbt: Compound,
-    pub items: Vec<Option<ItemStack>>,
-    pub data: Vec<i32>,
-}
-/// The container of a mod block's block entity, as a `WorldlyContainer`
-/// says it: its slot count, the slots each face reaches
-/// (`getSlotsForFace`, by `Direction`: down, up, north, south, west, east),
-/// and the slots hoppers may put into (`canPlaceItemThroughFace`) and take
-/// from (`canTakeItemThroughFace`); and the vanilla menu that shows its
-/// slots when the block is used, if any (`MOD_MENUS`).
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct ModContainer {
-    pub slots: usize,
-    pub faces: [Vec<usize>; 6],
-    pub inputs: Vec<usize>,
-    pub outputs: Vec<usize>,
-    pub menu: Option<String>,
 }
 /// The vanilla menus a mod container can open, with the slot count each
 /// shows: slot grids, and the furnaces' (input, fuel, result), whose four
@@ -156,8 +148,8 @@ impl Default for PotentSulfur {
 /// `BrushableBlockEntity`: the loot table is resolved on the first brush.
 #[derive(Clone, Debug, Default)]
 pub struct Brushable {
-    pub loot_table: Option<horizon_world::nbt::Tag>,
-    pub loot_seed: Option<horizon_world::nbt::Tag>,
+    pub loot_table: Option<horizon_core::nbt::Tag>,
+    pub table_seed_tag: Option<horizon_core::nbt::Tag>,
     pub item: Option<ItemStack>,
     /// Direction's legacy network id; not saved to disk by vanilla.
     pub hit_direction: Option<i32>,
@@ -202,9 +194,9 @@ pub struct Campfire {
 /// sound and `custom_name`.
 #[derive(Clone, Debug, Default)]
 pub struct Skull {
-    pub profile: Option<horizon_world::nbt::Tag>,
+    pub profile: Option<horizon_core::nbt::Tag>,
     pub note_block_sound: Option<String>,
-    pub custom_name: Option<horizon_world::nbt::Tag>,
+    pub custom_name: Option<horizon_core::nbt::Tag>,
     /// What `profile` draws, read from it once rather than every frame.
     pub skin: Option<SkullSkin>,
 }
@@ -218,6 +210,9 @@ pub struct SkullSkin {
     /// `ResolvableProfile.nameOrId` when the profile is `Dynamic` (a name or
     /// an id only): the key `skins::Resolver` resolves it by.
     pub dynamic: Option<NameOrId>,
+    /// `PlayerSkin.Patch.body`: the profile's `texture`, a resource pack
+    /// texture drawn instead of any skin.
+    pub texture: Option<String>,
     pub fallback: &'static str,
 }
 /// `Either<String, UUID>`: the key a `Dynamic` `ResolvableProfile` resolves
@@ -233,20 +228,30 @@ pub enum NameOrId {
 pub struct Crafter {
     pub items: [Option<ItemStack>; 9],
     pub disabled: [bool; 9],
-    pub triggered: bool,
+    /// `containerData` slot 9 as saved (`triggered`): any int, triggered
+    /// only at 1 ([`Crafter::is_triggered`]).
+    pub triggered: i32,
     pub crafting_ticks: i32,
     /// The block state's `triggered` when last ticked (not saved): the block
     /// entity flag follows it only when it changes (`CrafterBlock.neighborChanged`).
     pub state_triggered: Option<bool>,
 }
+impl Crafter {
+    /// `CrafterBlockEntity.isTriggered`: `containerData.get(9) == 1`.
+    pub fn is_triggered(&self) -> bool {
+        self.triggered == 1
+    }
+}
 #[derive(Clone, Debug, Default)]
 pub struct Banner {
     pub layers: Vec<BannerLayer>,
-    pub name: Option<String>,
+    /// `CustomName` as `ComponentSerialization.CODEC` read it (a plain string or
+    /// a component object), which `MapBanner.fromWorld` keeps as its name.
+    pub name: Option<horizon_core::nbt::Tag>,
     /// Components not consumed by BannerBlockEntity's implicit fields.
-    pub components: horizon_world::nbt::Compound,
+    pub components: horizon_core::nbt::Compound,
 }
-/// `CreakingHeartBlockEntity` (the logic is in `game/creaking.rs`).
+/// `CreakingHeartBlockEntity` (the logic is in `game/mobs/creaking.rs`).
 #[derive(Clone, Debug, Default)]
 pub struct CreakingHeart {
     /// The protector: its entity id once resolved, and its UUID (the saved form).
@@ -276,10 +281,24 @@ pub struct Beacon {
 }
 #[derive(Clone, Debug, Default)]
 pub struct Jukebox {
-    pub record: Option<ItemStack>,
+    /// `JukeboxBlockEntity`'s one slot (`ContainerSingleItem`), so a hopper or
+    /// a dropper reaches it as it reaches any container.
+    pub items: [Option<ItemStack>; 1],
     /// `ticks_since_song_started`, while a song plays.
     pub ticks: i64,
+    /// `JukeboxBlockEntity.saveAdditional` writes the clock only when its song
+    /// reference exists. Keep this separate from legacy playback adoption.
+    pub song_clock_present: bool,
     pub playing: bool,
+    /// A clock a save brought back, not playing yet: `setSongWithoutPlaying`
+    /// keeps the song and its clock without the sound's level event 1010.
+    pub loaded_clock: bool,
+}
+impl Jukebox {
+    /// `JukeboxBlockEntity.getTheItem`: the disc it holds.
+    pub fn record(&self) -> Option<&ItemStack> {
+        self.items[0].as_ref()
+    }
 }
 /// `BrewingStandBlockEntity` state. Slots: 0-2 bottles, 3 ingredient, 4 fuel.
 #[derive(Clone, Debug, Default)]
@@ -302,6 +321,16 @@ pub struct SignText {
     pub glowing: bool,
     /// The `click_event` in each line's component style, as saved.
     pub click: [Option<Tag>; 4],
+    /// Each line's saved component when it is more than plain text (a colour,
+    /// siblings, a list), so its style survives loading, saving and the
+    /// network. See `SignText::message` for a line edited since.
+    pub saved: [Option<SavedLine>; 4],
+}
+/// A sign line's saved component and the text it showed when it was read.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedLine {
+    pub text: String,
+    pub component: Tag,
 }
 /// `SignBlockEntity` / `HangingSignBlockEntity` data.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -312,6 +341,10 @@ pub struct SignData {
     pub waxed: bool,
     /// `allow_op_features`: the sign's click events may run commands.
     pub allow_op_features: bool,
+    /// `playerWhoMayEdit`: the one player whose editor is on this sign, as a
+    /// UUID. Every other player's click, write and applicator is refused
+    /// while it is set. Not saved (vanilla keeps it out of the NBT).
+    pub allowed_editor: Option<u128>,
 }
 /// `VibrationInfo`.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -319,8 +352,13 @@ pub struct Info {
     pub event: &'static str,
     pub distance: f32,
     pub pos: [f64; 3],
-    pub source: Option<Who>,
+    pub source: Option<EventSource>,
     pub owner: Option<Who>,
+    /// `uuid`: the source's saved identity (`source`), taken when the event
+    /// was posted. `source` is the live entity and comes back `None` on load.
+    pub source_uuid: Option<[i32; 4]>,
+    /// `projectileOwnerUuid` (`projectile_owner`), likewise beside `owner`.
+    pub owner_uuid: Option<[i32; 4]>,
 }
 /// `VibrationSelector`: the closest, then highest-frequency candidate of a tick.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -333,6 +371,7 @@ pub struct Data {
     pub current: Option<Info>,
     pub travel: i32,
     pub selector: Selector,
+    pub reload_particle: bool,
 }
 /// Which sculk block entity this is.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

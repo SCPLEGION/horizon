@@ -1,5 +1,6 @@
 //! LivingEntity water/lava travel and fluid escape/buoyancy velocity updates.
 use crate::living_air::{LivingAirWorld, move_relative};
+use crate::move_gate::MoveGate;
 use horizon_core::geometry::Vec3;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -13,10 +14,6 @@ pub trait LivingFluidWorld: LivingAirWorld {
     fn water_slow_down(&mut self) -> Result<f32, Self::Error>;
     fn water_movement_efficiency(&mut self) -> Result<f64, Self::Error>;
     fn dolphins_grace(&mut self) -> Result<bool, Self::Error>;
-    /// NeoForge's `SWIM_SPEED` attribute, the factor of the base water thrust (1 for vanilla).
-    fn swim_speed(&mut self) -> Result<f32, Self::Error> {
-        Ok(1.0)
-    }
     fn fluid_height(&mut self, tag: TravelFluidTag) -> Result<f64, Self::Error>;
     fn fluid_jump_threshold(&mut self) -> Result<f64, Self::Error>;
     fn is_free(&mut self, offset: Vec3) -> Result<bool, Self::Error>;
@@ -59,6 +56,7 @@ pub fn jump_out_of_fluid<W: LivingFluidWorld>(world: &mut W, old_y: f64) -> Resu
 }
 pub fn travel_in_water<W: LivingFluidWorld>(
     world: &mut W,
+    gate: &mut MoveGate,
     input: Vec3,
     gravity: f64,
     falling: bool,
@@ -69,7 +67,7 @@ pub fn travel_in_water<W: LivingFluidWorld>(
     } else {
         world.water_slow_down()?
     };
-    let mut speed = 0.02f32 * world.swim_speed()?;
+    let mut speed = 0.02f32;
     let mut efficiency = world.water_movement_efficiency()? as f32;
     if !world.on_ground()? {
         efficiency *= 0.5;
@@ -82,7 +80,7 @@ pub fn travel_in_water<W: LivingFluidWorld>(
         slowdown = 0.96;
     }
     move_relative(world, input, speed)?;
-    world.move_self(world.velocity())?;
+    world.move_self(gate, world.velocity())?;
     let mut velocity = world.velocity();
     if world.horizontal_collision() && world.on_climbable()? {
         velocity.y = 0.2;
@@ -98,13 +96,14 @@ pub fn travel_in_water<W: LivingFluidWorld>(
 }
 pub fn travel_in_lava<W: LivingFluidWorld>(
     world: &mut W,
+    gate: &mut MoveGate,
     input: Vec3,
     gravity: f64,
     falling: bool,
     old_y: f64,
 ) -> Result<(), W::Error> {
     move_relative(world, input, 0.02)?;
-    world.move_self(world.velocity())?;
+    world.move_self(gate, world.velocity())?;
     let height = world.fluid_height(TravelFluidTag::Lava)?;
     if height <= world.fluid_jump_threshold()? {
         let velocity = world.velocity();
@@ -145,14 +144,18 @@ pub fn float_in_liquid_while_ridden<W: LivingFluidWorld>(
     }
     Ok(())
 }
-pub fn travel_in_fluid<W: LivingFluidWorld>(world: &mut W, input: Vec3) -> Result<(), W::Error> {
+pub fn travel_in_fluid<W: LivingFluidWorld>(
+    world: &mut W,
+    gate: &mut MoveGate,
+    input: Vec3,
+) -> Result<(), W::Error> {
     let falling = world.velocity().y <= 0.0;
     let old_y = world.y();
     let gravity = world.effective_gravity()?;
     if world.in_water()? {
-        travel_in_water(world, input, gravity, falling, old_y)?;
+        travel_in_water(world, gate, input, gravity, falling, old_y)?;
     } else {
-        travel_in_lava(world, input, gravity, falling, old_y)?;
+        travel_in_lava(world, gate, input, gravity, falling, old_y)?;
     }
     float_in_liquid_while_ridden(world, TravelFluidTag::EntityFloatable)
 }

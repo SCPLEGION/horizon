@@ -2,8 +2,26 @@
 //! `misc/shadow.png` projected onto block collision bounds under
 //! an entity, faded by camera distance, depth below the entity and the light
 //! at each block.
-use crate::{blocks::BlockFacts, hud::Rect, mesher::Vertex, mobs::Mob, world::World};
+use crate::{
+    blocks::BlockFacts, hud::Rect, mesher::Vertex, mobs::Mob, text_display::TextDisplayData,
+    world::World,
+};
 use glam::DVec3;
+
+/// Resolve renderer metadata once while loading a registered content mob type.
+pub(crate) fn content_shadow(row: &serde_json::Value) -> Option<(f32, f32)> {
+    let (radius, strength) = shadow_params(row["template"].as_str()?);
+    Some((
+        row["shadow_radius"].as_f64().map_or(radius, |v| v as f32),
+        row["shadow_strength"]
+            .as_f64()
+            .map_or(strength, |v| v as f32),
+    ))
+}
+
+fn mob_shadow_params(m: &Mob) -> (f32, f32) {
+    m.kind.shadow.unwrap_or_else(|| shadow_params(&m.kind.id))
+}
 
 /// Vanilla renderer shadow radius and strength for an entity type id.
 pub fn shadow_params(entity: &str) -> (f32, f32) {
@@ -65,13 +83,12 @@ pub fn mob_shadow_radius(m: &Mob) -> f32 {
         S::Pufferfish => return 0.1 + 0.1 * m.extra.size as f32,
         _ => {}
     }
-    let scale = if m.extra.model_scale > 0.0 {
-        m.extra.model_scale
-    } else {
-        1.0
-    };
-    let radius = shadow_params(&m.kind.id).0 * scale;
-    if matches!(&*m.kind.id, "minecraft:player" | "minecraft:mannequin") || !m.is_baby() {
+    let radius = mob_shadow_params(m).0 * m.model_scale();
+    if matches!(
+        m.kind.class_id(),
+        "minecraft:player" | "minecraft:mannequin"
+    ) || !m.is_baby()
+    {
         return radius;
     }
     let age = match species {
@@ -91,19 +108,80 @@ pub fn mob_shadow_radius(m: &Mob) -> f32 {
 }
 
 /// The mobs that cast a shadow, at their feet position interpolated by
-/// `alpha`, with their type id and shadow radius. `EntityRenderer.extractShadow`
-/// skips an entity whose `EntityRenderState.isInvisible` is set
-/// (`Entity.isInvisible`).
-pub fn mob_casters(mobs: &[Mob], alpha: f64) -> impl Iterator<Item = (DVec3, &str, f32)> {
-    mobs.iter().filter(|m| !m.is_invisible()).map(move |m| {
-        let (p, q) = (m.previous, m.position);
-        let pos = DVec3::new(
-            p.x + (q.x - p.x) * alpha,
-            p.y + (q.y - p.y) * alpha,
-            p.z + (q.z - p.z) * alpha,
-        );
-        (pos, m.kind.id.as_str(), mob_shadow_radius(m))
-    })
+/// `alpha`, with their type's shadow radius and strength.
+/// `EntityRenderer.extractShadow` skips an entity whose
+/// `EntityRenderState.isInvisible` is set (`Entity.isInvisible`).
+pub fn mob_casters<'a>(
+    mobs: impl IntoIterator<Item = &'a Mob>,
+    alpha: f64,
+) -> impl Iterator<Item = (DVec3, f32, f32)> {
+    mobs.into_iter()
+        .filter(|m| !m.is_invisible())
+        .map(move |m| {
+            let (p, q) = (m.previous, m.position);
+            let pos = DVec3::new(
+                p.x + (q.x - p.x) * alpha,
+                p.y + (q.y - p.y) * alpha,
+                p.z + (q.z - p.z) * alpha,
+            );
+            (pos, mob_shadow_radius(m), mob_shadow_params(m).1)
+        })
+}
+
+/// `DisplayRenderer.getShadowRadius` and `DisplayRenderer.getShadowStrength`:
+/// the display's radius and strength interpolated by `t`, the two fields of
+/// its render state. `EntityRenderer.extractShadow` draws nothing at a radius
+/// of 0 or less, and text, block and item displays all go through this renderer.
+pub fn display_caster(
+    pos: DVec3,
+    from: &TextDisplayData,
+    shown: &TextDisplayData,
+    t: f32,
+) -> Option<(DVec3, f32, f32)> {
+    let d = shown.blend(from, t);
+    (d.shadow_radius > 0.0).then_some((pos, d.shadow_radius, d.shadow_strength))
+}
+
+/// `EntityRenderer.extractShadow`'s gates: the radius clamped to
+/// `MAX_SHADOW_RADIUS` (32) and the strength faded over 256 blocks squared
+/// from the camera. None when either is 0 or less, so no shadow is drawn.
+fn shadow_gates(radius: f32, strength: f32, dist_sq: f64) -> Option<(f32, f32)> {
+    let radius = radius.min(32.0);
+    if radius <= 0.0 {
+        return None;
+    }
+    let pow = ((1.0 - dist_sq / 256.0) * f64::from(strength)) as f32;
+    (pow > 0.0).then_some((radius, pow))
+}
+
+/// Whether a blob shadow can meet the view, independently of its caster's
+/// model bounds. Keep the distance/strength gate before the frustum test: most
+/// entities are too far away to cast a shadow at all.
+pub fn in_view(
+    view: &crate::gfx::JoinedFrusta,
+    camera: DVec3,
+    pos: DVec3,
+    radius: f32,
+    strength: f32,
+) -> bool {
+    let Some((radius, _)) = shadow_gates(radius, strength, pos.distance_squared(camera)) else {
+        return false;
+    };
+    let (min, max) = bounds(camera, pos, radius);
+    view.intersects(min, max)
+}
+
+/// Conservative camera-relative bounds of the shadow's quads, independent of
+/// the caster's model bounds. The scan reaches at most `radius` below the feet;
+/// include its bottom block too. Every quad is clipped to the horizontal square
+/// and block tops above the feet are rejected by [`shadow`].
+fn bounds(camera: DVec3, pos: DVec3, radius: f32) -> (glam::Vec3, glam::Vec3) {
+    let r = f64::from(radius.clamp(0.0, 32.0));
+    let min = DVec3::new(pos.x - r, (pos.y - r).floor() - 1.0, pos.z - r) - camera;
+    let max = DVec3::new(pos.x + r, pos.y + 1e-6, pos.z + r) - camera;
+    // Cover rounding when the camera-relative vertices are converted to f32.
+    let margin = glam::Vec3::splat(1e-4);
+    (min.as_vec3() - margin, max.as_vec3() + margin)
 }
 
 /// Shadow quads for an entity at `pos` (interpolated feet position).
@@ -123,15 +201,9 @@ pub fn shadow(
     sky_darken: i32,
     out: &mut Vec<Vertex>,
 ) {
-    let radius = radius.min(32.0);
-    if radius <= 0.0 {
+    let Some((radius, pow)) = shadow_gates(radius, strength, pos.distance_squared(camera)) else {
         return;
-    }
-    let dist_sq = pos.distance_squared(camera);
-    let pow = ((1.0 - dist_sq / 256.0) * f64::from(strength)) as f32;
-    if pow <= 0.0 {
-        return;
-    }
+    };
     let r = f64::from(radius);
     let (x0, x1) = ((pos.x - r).floor() as i32, (pos.x + r).floor() as i32);
     let (z0, z1) = ((pos.z - r).floor() as i32, (pos.z + r).floor() as i32);
@@ -146,6 +218,11 @@ pub fn shadow(
                 let state = world.block(x, y - 1, z);
                 let below = facts.get(state);
                 if below.render_shape == crate::blocks::RenderShape::Invisible {
+                    continue;
+                }
+                // extractShadowPiece: only a block whose collision shape is a full
+                // block takes a shadow (hoppers, cauldrons, slabs, farmland... take none).
+                if !below.full_collision {
                     continue;
                 }
                 let Some(bounds) = collision_bounds(state) else {
@@ -209,6 +286,86 @@ pub fn shadow(
 mod tests {
     use super::*;
     #[test]
+    fn culling_bounds_contain_the_generated_shadow_quads() {
+        use crate::chunk::Chunk;
+        use horizon_core::geometry::{Aabb, Vec3};
+        use horizon_world::level::data;
+        use std::{path::PathBuf, sync::Arc};
+        let root = std::env::var_os("HORIZON_RESOURCES")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| {
+                PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../.local/horizon-client")
+                    .join(horizon_core::VANILLA_VERSION)
+            });
+        if !root.join("gameplay-facts.json").exists() {
+            eprintln!(
+                "skipping resource-backed shadow bounds check: {}",
+                root.display()
+            );
+            return;
+        }
+        let registry = data::load_registry(&root).unwrap();
+        let facts = BlockFacts::load(&root, &registry).unwrap();
+        let stone = registry.default_state("minecraft:stone").unwrap();
+        let mut world = World::new(facts.air, 0);
+        world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        for x in 0..16 {
+            for z in 0..16 {
+                // Steps exercise shadows projected below the caster's model box.
+                world.set(x, 60 + x / 4, z, stone).unwrap();
+            }
+        }
+        let sprite = Rect {
+            u0: 0.0,
+            v0: 0.0,
+            u1: 1.0,
+            v1: 1.0,
+            w: 16,
+            h: 16,
+        };
+        let mut checked = 0;
+        for pos in [
+            DVec3::new(8.0, 64.0, 8.0),
+            DVec3::new(8.5, 64.001, 8.5),
+            DVec3::new(8.99999, 64.8, 8.99999),
+        ] {
+            for radius in [0.15, 0.7, 3.0, 32.0, 64.0] {
+                for strength in [0.75, 1.0, 20.0] {
+                    let camera = pos + DVec3::new(-5.25, 2.0, 4.75);
+                    let mut vertices = Vec::new();
+                    shadow(
+                        &world,
+                        &facts,
+                        &|_| Some(Aabb::new(Vec3::ZERO, Vec3::new(1.0, 1.0, 1.0))),
+                        sprite,
+                        camera,
+                        pos,
+                        radius,
+                        strength,
+                        0.0,
+                        0,
+                        &mut vertices,
+                    );
+                    let (min, max) = bounds(camera, pos, radius);
+                    for vertex in vertices {
+                        let p = glam::Vec3::from_array(vertex.pos);
+                        assert!(
+                            p.cmpge(min).all() && p.cmple(max).all(),
+                            "{p:?}: {min:?}..{max:?}"
+                        );
+                        checked += 1;
+                    }
+                }
+            }
+        }
+        assert!(
+            checked > 1000,
+            "exercise actual shadow geometry, including large radii"
+        );
+    }
+
+    #[test]
     fn shadows_lie_on_the_block_top_under_model_feet() {
         use crate::chunk::Chunk;
         use horizon_world::level::data;
@@ -268,35 +425,56 @@ mod tests {
             assert_eq!(v.pos[1], (pos.y - camera.y) as f32);
             assert!(v.pos[1] < feet);
         }
-        let farmland = registry.default_state("minecraft:farmland").unwrap();
-        world.set(8, 63, 8, farmland).unwrap();
-        out.clear();
-        let pos = DVec3::new(8.5, 63.9375, 8.5);
-        shadow(
-            &world,
-            &facts,
-            &|state| {
-                (state == farmland).then(|| {
-                    horizon_core::geometry::Aabb::new(
-                        horizon_core::geometry::Vec3::ZERO,
-                        horizon_core::geometry::Vec3::new(1.0, 0.9375, 1.0),
-                    )
-                })
-            },
-            sprite,
-            camera,
-            pos,
-            0.3,
-            1.0,
-            0.0,
-            0,
-            &mut out,
+        let [v0, v1, v2] = [out[0].pos, out[1].pos, out[2].pos].map(glam::Vec3::from);
+        assert!(
+            (v1 - v0).cross(v2 - v0).y > 0.0,
+            "shadow quad winds upward (+Y) so back-face culling hides it from below"
         );
-        assert_eq!(out.len(), 4);
-        assert!(out.iter().all(|v| v.pos[1] == (pos.y - camera.y) as f32));
+        // Blocks whose collision top is not a flat full block take no shadow
+        // (vanilla's isCollisionShapeFullBlock gate), even when their collision
+        // bounds reach y=1 like a hopper's rim.
+        for name in [
+            "minecraft:hopper",
+            "minecraft:cauldron",
+            "minecraft:composter",
+            "minecraft:farmland",
+            "minecraft:oak_slab",
+            "minecraft:soul_sand",
+            "minecraft:snow",
+            "minecraft:chest",
+            "minecraft:oak_fence",
+            "minecraft:oak_stairs",
+        ] {
+            let state = registry.default_state(name).unwrap();
+            assert!(!facts.get(state).full_collision, "{name}");
+            world.set(8, 63, 8, state).unwrap();
+            out.clear();
+            shadow(
+                &world,
+                &facts,
+                &|_| {
+                    Some(horizon_core::geometry::Aabb::new(
+                        horizon_core::geometry::Vec3::ZERO,
+                        horizon_core::geometry::Vec3::new(1.0, 1.0, 1.0),
+                    ))
+                },
+                sprite,
+                camera,
+                DVec3::new(8.5, 64.0, 8.5),
+                0.3,
+                1.0,
+                0.0,
+                0,
+                &mut out,
+            );
+            assert!(out.is_empty(), "{name} took a shadow");
+        }
     }
+
     #[test]
     fn invisible_mobs_cast_no_shadow() {
+        let mut test_level = crate::health::TestLevel::new(0);
+        let level = &mut test_level.level();
         use horizon_core::geometry::Vec3;
         let kind = crate::mobs::sensor_scan_tests::kind();
         let mut seen = Mob::new(1, kind.clone(), Vec3::new(1.0, 64.0, 1.0), 0.0);
@@ -307,11 +485,17 @@ mod tests {
         flagged.invisible = true;
         let mut potion = Mob::new(3, kind, Vec3::ZERO, 0.0);
         potion.add_effect("minecraft:invisibility", 600, 0);
+        crate::mobs::ai::tick_effects(
+            &mut potion,
+            crate::test_resources::server_loop_context(),
+            level,
+            None,
+        );
         let mobs = [seen, flagged, potion];
         let casters: Vec<_> = mob_casters(&mobs, 0.5).collect();
         assert_eq!(
             casters,
-            vec![(DVec3::new(0.5, 64.0, 1.0), "minecraft:cow", 0.7)],
+            vec![(DVec3::new(0.5, 64.0, 1.0), 0.7, 1.0)],
             "only the visible mob casts a shadow"
         );
     }
@@ -342,6 +526,14 @@ mod tests {
         goat.extra.age = -24000;
         // Goat.getAgeScale: 0.55.
         assert_eq!(mob_shadow_radius(&goat), 0.7 * 0.55);
+        let mut strider = mob("minecraft:strider", S::Strider);
+        strider.extra.age = -24000;
+        // StriderRenderer halves AgeableMobRenderer's 0.5 * 0.5 again.
+        assert_eq!(mob_shadow_radius(&strider), 0.125);
+        let mut turtle = mob("minecraft:turtle", S::Turtle);
+        turtle.extra.age = -24000;
+        // TurtleRenderer takes 0.83 of the 0.7 * 0.3 age-scaled radius.
+        assert!((mob_shadow_radius(&turtle) - 0.7 * 0.3 * 0.83).abs() < 1e-6);
     }
     #[test]
     fn scaled_players_cast_a_scaled_shadow() {
@@ -379,5 +571,73 @@ mod tests {
         assert_eq!(shadow_params("minecraft:zombie"), (0.5, 1.0));
         assert_eq!(shadow_params("minecraft:item"), (0.15, 0.75));
         assert_eq!(shadow_params("minecraft:spider"), (0.8, 1.0));
+    }
+    /// `DisplayRenderer.getShadowRadius`/`getShadowStrength` behind
+    /// `EntityRenderer.extractShadow`: a display casts a shadow only above a
+    /// radius of 0, with the radius clamped to 32 and the strength faded by
+    /// the camera distance.
+    #[test]
+    fn displays_cast_a_gated_shadow() {
+        let pos = DVec3::new(4.0, 64.0, 4.0);
+        let empty = TextDisplayData::default();
+        assert_eq!(display_caster(pos, &empty, &empty, 0.5), None);
+        let shown = TextDisplayData {
+            shadow_radius: 40.0,
+            shadow_strength: 0.5,
+            ..TextDisplayData::default()
+        };
+        // Halfway from the default (no radius, full strength).
+        assert_eq!(
+            display_caster(pos, &empty, &shown, 0.5),
+            Some((pos, 20.0, 0.75))
+        );
+        let (_, radius, strength) = display_caster(pos, &empty, &shown, 1.0).unwrap();
+        assert_eq!((radius, strength), (40.0, 0.5));
+        // Math.min(radius, 32) and (1 - distanceSq / 256) * strength.
+        assert_eq!(shadow_gates(radius, strength, 64.0), Some((32.0, 0.375)));
+        assert_eq!(shadow_gates(radius, strength, 256.0), None);
+        assert_eq!(shadow_gates(radius, 0.0, 0.0), None);
+    }
+}
+
+#[cfg(test)]
+mod content_shadow_tests {
+    use super::*;
+
+    #[test]
+    fn content_renderer_shadows_inherit_override_and_scale() {
+        let mut kind = (*crate::mobs::sensor_scan_tests::kind()).clone();
+        kind.id = "test:mob".into();
+        kind.species = crate::mobs::Species::Zombie;
+        let make = |template: &str, radius: Option<f32>, strength: Option<f32>| {
+            let mut row = serde_json::json!({"template": template});
+            if let Some(v) = radius {
+                row["shadow_radius"] = v.into();
+            }
+            if let Some(v) = strength {
+                row["shadow_strength"] = v.into();
+            }
+            let mut k = kind.clone();
+            k.shadow = content_shadow(&row);
+            Mob::new(
+                1,
+                std::sync::Arc::new(k),
+                horizon_core::geometry::Vec3::ZERO,
+                0.0,
+            )
+        };
+        let declared = make("minecraft:zombie", Some(0.2), Some(0.6));
+        assert_eq!(mob_shadow_params(&declared), (0.2, 0.6));
+        assert_eq!(mob_casters([&declared], 0.0).next().unwrap().2, 0.6);
+        let ghast = make("minecraft:ghast", None, None);
+        assert_eq!(mob_shadow_radius(&ghast), 1.5);
+        let mut scaled = make("minecraft:zombie", Some(0.4), None);
+        scaled.extra.model_scale = 2.0;
+        assert_eq!(mob_shadow_radius(&scaled), 0.8);
+        let mut baby = make("minecraft:zombie", None, None);
+        baby.extra.age = -24000;
+        assert_eq!(mob_shadow_radius(&baby), 0.25);
+        let zero = make("minecraft:zombie", Some(0.0), None);
+        assert_eq!(shadow_gates(mob_shadow_radius(&zero), 1.0, 0.0), None);
     }
 }
