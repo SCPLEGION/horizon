@@ -641,12 +641,13 @@ pub(crate) struct NativeCreativeStack {
     pub(crate) tooltip: Vec<String>,
 }
 
-/// A fuel of [`native_fuels`]: the item and the ticks it burns in a furnace (not a fast-cooking one).
+/// A fuel of [`native_fuels`]: the item, the ticks it burns and the cooking speed multiplier it gives.
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct NativeFuel {
     pub(crate) item: String,
     pub(crate) ticks: i32,
+    pub(crate) speed: f32,
 }
 
 /// A compostable of [`native_compostables`]: the item and the chance one of it adds a layer to a composter
@@ -2884,15 +2885,18 @@ impl Game<'_> {
         self.player.as_ref()?;
         self.made_anvil_recipes()
     }
-    /// Every item that burns in a furnace (`cooking_fuel`) with its burn time in ticks, sorted by id. API 93.
-    pub(super) fn native_fuels(&self) -> Vec<NativeFuel> {
+    /// Every item that burns in a furnace (`cooking_fuel`) with its burn time in ticks and speed multiplier, sorted by
+    /// id; `fast` is for a smoker or blast furnace (fast cooking). API 93.
+    pub(super) fn native_fuels(&self, fast: bool) -> Vec<NativeFuel> {
         let items = self.items();
         let mut out: Vec<NativeFuel> = items
             .items
             .keys()
             .filter_map(|id| {
-                let ticks = self.res.providers().burn_time(items, &ItemStack::new(id, 1), false);
-                (ticks > 0).then(|| NativeFuel { item: id.to_string(), ticks })
+                let stack = ItemStack::new(id, 1);
+                let ticks = self.res.providers().burn_time(items, &stack, fast);
+                let speed = self.res.providers().speed(items, &stack, fast);
+                (ticks > 0).then(|| NativeFuel { item: id.to_string(), ticks, speed })
             })
             .collect();
         out.sort_by(|a, b| a.item.cmp(&b.item));

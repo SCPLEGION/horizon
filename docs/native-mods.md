@@ -240,7 +240,7 @@ API 76 adds `native_set_block_adjusted(pos, block, properties)`: `native_set_blo
 
 API 77 adds `native_slot_rules_at(pos, block, rules)`, on the server: `native_slot_rules` asked after it with the position of the block whose menu it is, so a mod's rules can follow that block's own state (Mekanism's Formulaic Assemblicator, one per machine). Bundles that use it need `"hooks": 77`.
 
-API 93 adds `native_fuels()` (every item that burns in a furnace, `cooking_fuel`, with its burn time in ticks) and `native_compostables()` (every item a composter takes with the chance one adds a layer), both sorted by id, for a recipe viewer fuel and compost categories. Bundles that use them need `"hooks": 93`.
+API 93 adds `native_fuels()` (every item that burns in a furnace, `cooking_fuel`, with its burn time in ticks and cooking speed; `native_fuels(fast)` for a smoker or blast furnace) and `native_compostables()` (every item a composter takes with the chance one adds a layer), both sorted by id, for a recipe viewer fuel and compost categories. Bundles that use them need `"hooks": 93`.
 
 API 92 adds `name` (display name) and `tooltip` (the other plain tooltip lines) to each stack `native_creative_stacks()` returns. Bundles that use them need `"hooks": 92`.
 
